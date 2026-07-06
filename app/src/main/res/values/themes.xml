@@ -1,0 +1,3 @@
+<resources>
+    <style name="Theme.SardineSync" parent="Theme.AppCompat.DayNight.NoActionBar" />
+</resources>

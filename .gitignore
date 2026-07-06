@@ -1,0 +1,16 @@
+.gradle/
+build/
+app/build/
+local.properties
+*.iml
+.idea/
+
+# Release signing secrets — never commit these
+app/keystore.properties
+*.jks
+*.keystore
+
+# Personal dev runbooks / notes — kept local, not for the public repo
+notes/
+DEPLOY.md
+RUN.md

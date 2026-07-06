@@ -1,0 +1,19 @@
+<resources>
+    <string name="app_name">SardineSync</string>
+
+    <string name="settings_title">Connect to your tracker</string>
+    <string name="settings_intro">SardineSync sends your Health Connect readings to your own sardine-track server. Enter its address and your access details — they\'re stored encrypted on this device only.</string>
+
+    <string name="settings_server_label">Server address</string>
+    <string name="settings_server_hint">https://your-tracker.example.com</string>
+
+    <string name="settings_token_label">Access token</string>
+    <string name="settings_token_help">The api_token value from your server\'s config.json.</string>
+    <string name="settings_token_hint">bearer token</string>
+
+    <string name="settings_userid_label">Account ID</string>
+    <string name="settings_userid_help">Which account on the server these readings belong to (usually 1).</string>
+    <string name="settings_userid_hint">1</string>
+
+    <string name="settings_save">Save and connect</string>
+</resources>

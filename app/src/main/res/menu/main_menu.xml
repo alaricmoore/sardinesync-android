@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Dev-only tools shown in the floating "⋮" PopupMenu. -->
+<menu xmlns:android="http://schemas.android.com/apk/res/android">
+    <item
+        android:id="@+id/menu_permissions"
+        android:title="Grant Health permissions" />
+    <item
+        android:id="@+id/menu_sync"
+        android:title="Sync now" />
+    <item
+        android:id="@+id/menu_backfill"
+        android:title="Backfill past data" />
+    <item
+        android:id="@+id/menu_settings"
+        android:title="Settings" />
+    <item
+        android:id="@+id/menu_seed"
+        android:title="Seed sample data (debug)" />
+    <item
+        android:id="@+id/menu_reload"
+        android:title="Reload page" />
+</menu>
