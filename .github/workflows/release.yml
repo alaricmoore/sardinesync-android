@@ -1,0 +1,100 @@
+# GitHub Actions workflow: build a signed release APK on GitHub's servers.
+#
+# How to cut a release:   git tag v0.3 && git push origin v0.3
+# That's it — this file does the rest. A few minutes later the APK appears at
+# https://github.com/alaricmoore/sardinesync-android/releases
+#
+# The signing secrets (keystore + passwords) are NOT in this file or the repo.
+# They live in the repo's encrypted secret store (Settings → Secrets → Actions)
+# and are injected at build time. Anyone can read this file; only the build
+# runner can read the secrets.
+
+name: Release APK
+
+# "on" = which events wake this workflow up.
+on:
+  push:
+    tags: ["v*"]        # any tag starting with v, e.g. v0.2
+  workflow_dispatch:     # also adds a manual "Run workflow" button in the
+                         # Actions tab — a dry run that builds the APK but
+                         # skips the release step (see the `if:` below).
+
+# The workflow authenticates as a robot user with minimal rights.
+# Creating a release counts as writing to the repo, so ask for that.
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest    # a fresh throwaway Linux VM, free for public repos
+
+    steps:
+      # Each step runs in order on that VM. `uses:` runs a prepackaged action
+      # (someone else's reusable step); `run:` runs shell commands.
+
+      - name: Check out the repo
+        uses: actions/checkout@v4
+
+      - name: Install JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin   # a well-maintained OpenJDK build
+          java-version: "21"      # AGP does not yet run under JDK 25
+
+      # Caches Gradle downloads between runs so builds take ~2 min, not ~6.
+      - name: Set up Gradle cache
+        uses: gradle/actions/setup-gradle@v4
+
+      # Recreate exactly what a local release build expects: the keystore file
+      # and app/keystore.properties pointing at it. The keystore is stored as
+      # one long base64 string because secrets can only hold text, not files.
+      # $RUNNER_TEMP is a scratch dir on the VM, wiped when the job ends.
+      - name: Reconstruct signing keystore from secrets
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        run: |
+          printf '%s' "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/release.jks"
+          {
+            printf 'storeFile=%s\n'     "$RUNNER_TEMP/release.jks"
+            printf 'storePassword=%s\n' "$KEYSTORE_PASSWORD"
+            printf 'keyAlias=%s\n'      "$KEY_ALIAS"
+            printf 'keyPassword=%s\n'   "$KEY_PASSWORD"
+          } > app/keystore.properties
+
+      - name: Build signed release APK
+        run: ./gradlew :app:assembleRelease
+
+      # Give the APK a name that says what it is. GITHUB_REF_NAME is the tag
+      # (v0.2) on tag builds, or the branch (main) on manual dry runs.
+      - name: Name the APK
+        run: |
+          if [[ "$GITHUB_REF_NAME" == v* ]]; then
+            apk="sardinesync-$GITHUB_REF_NAME.apk"
+          else
+            apk="sardinesync-dev.apk"
+          fi
+          cp app/build/outputs/apk/release/app-release.apk "$apk"
+          echo "APK_NAME=$apk" >> "$GITHUB_ENV"   # pass the name to later steps
+
+      # Always attach the APK to the workflow run itself (visible in the
+      # Actions tab for 90 days) — this is what a manual dry run produces.
+      - name: Upload APK as build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.APK_NAME }}
+          path: ${{ env.APK_NAME }}
+
+      # Only on real tags: create the public Release with the APK attached.
+      # `gh` is preinstalled on the runner; github.token is a short-lived
+      # credential GitHub mints for this run automatically.
+      - name: Create GitHub Release
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" "$APK_NAME" \
+            --title "SardineSync $GITHUB_REF_NAME" \
+            --generate-notes
