@@ -1,0 +1,7 @@
+First public release.
+
+- Health Connect sync: steps, resting heart rate, HRV (RMSSD), SpO2, respiratory rate, body temperature
+- One-year non-destructive backfill on first run
+- Nightly background sync
+- WebView wrapper for your sardinetracker site
+- Credentials stored encrypted on device (Android Keystore)

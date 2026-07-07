@@ -1,0 +1,1 @@
+Sync Health Connect biometrics to your self-hosted sardinetracker server

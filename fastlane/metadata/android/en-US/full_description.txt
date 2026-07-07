@@ -1,0 +1,18 @@
+SardineSync is the Android companion for <a href="https://github.com/alaricmoore/sardinetracker">sardinetracker</a>, a local-first, self-hosted tracker for systemic autoimmune rheumatic disease (lupus, Sjögren's, and friends — "SARDines").
+
+The app reads your biometrics from Health Connect and syncs them to your own sardinetracker server. Because it uses Health Connect rather than a proprietary vendor API, it works with whatever wearable you already own — Fitbit, Garmin, Samsung, Oura, Pixel Watch, or anything else that writes to Health Connect. No Apple Watch required.
+
+<b>What it does</b>
+
+<ul>
+<li>Syncs today's steps, resting heart rate, HRV (RMSSD), SpO2, respiratory rate, and body temperature to your server</li>
+<li>Backfills up to a year of history on first run — non-destructively; it never overwrites symptoms or notes you typed by hand</li>
+<li>Runs a nightly background sync so you don't have to remember</li>
+<li>Wraps your sardinetracker site in a WebView so logging and browsing feel like one app</li>
+</ul>
+
+<b>Your data stays yours</b>
+
+The app talks only to the server address you give it — your own machine. No analytics, no trackers, no third-party services. Your server credentials are stored encrypted on the device (Android Keystore-backed).
+
+You need a running sardinetracker server to use this app; see the sardinetracker repository for a ten-minute install guide.
