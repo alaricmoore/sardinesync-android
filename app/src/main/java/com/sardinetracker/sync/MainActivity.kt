@@ -111,7 +111,7 @@ class MainActivity : AppCompatActivity() {
         })
 
         // Always keep the nightly sync queued (mirrors iOS scheduleNext at launch).
-        SyncScheduler.scheduleDaily(this)
+        SyncScheduler.scheduleDaily(this, SyncWorker::class.java)
 
         firstRunSetup()
     }
