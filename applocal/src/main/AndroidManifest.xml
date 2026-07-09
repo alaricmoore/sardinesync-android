@@ -5,6 +5,16 @@
          The embedded server binds 127.0.0.1 exclusively; nothing is exposed. -->
     <uses-permission android:name="android.permission.INTERNET" />
 
+    <!-- Native delivery of the tracker's reminders/alerts (runtime-granted on 13+) -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
+    <!-- Exact alarms for medication reminders — the app category this
+         permission exists for. SCHEDULE_EXACT_ALARM covers Android 12,
+         USE_EXACT_ALARM (no user toggle) covers 13+. -->
+    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM"
+        android:maxSdkVersion="32" />
+    <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
+
     <application
         android:allowBackup="true"
         android:icon="@mipmap/ic_launcher"
@@ -26,6 +36,10 @@
                 <action android:name="androidx.health.ACTION_SHOW_PERMISSIONS_RATIONALE" />
             </intent-filter>
         </activity>
+
+        <receiver
+            android:name=".ReminderAlarmReceiver"
+            android:exported="false" />
 
         <!-- Required on Android 14+ so Health Connect can surface permission usage -->
         <activity-alias

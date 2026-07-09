@@ -43,6 +43,9 @@ class MainActivity : ComponentActivity() {
             }
         }
 
+    private val notifPermLauncher =
+        registerForActivityResult(androidx.activity.result.contract.ActivityResultContracts.RequestPermission()) { }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
@@ -65,6 +68,16 @@ class MainActivity : ComponentActivity() {
         EmbeddedServer.ensureStarted(this)
         com.sardinetracker.sync.SyncScheduler.scheduleDaily(
             this, LocalSyncWorker::class.java, requireNetwork = false)
+
+        // The Android stand-in for the Pi's APScheduler (reminders, alerts).
+        Notifier.ensureChannels(this)
+        NotificationWorker.schedulePeriodic(this)
+        if (android.os.Build.VERSION.SDK_INT >= 33 &&
+            checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) !=
+            android.content.pm.PackageManager.PERMISSION_GRANTED
+        ) {
+            notifPermLauncher.launch(android.Manifest.permission.POST_NOTIFICATIONS)
+        }
 
         lifecycleScope.launch {
             if (EmbeddedServer.waitUntilReady()) {

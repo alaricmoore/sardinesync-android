@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Status-bar icon: the spike mark's silhouette (three bars + threshold dash).
+     Status-bar icons must be single-color; the system tints it. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M29,56.5h12v21.5h-12z M48,27.5h12v50.5h-12z M67,51h12v27h-12z M20,42h16v6h-16z M42,42h24v6h-24z M72,42h16v6h-16z" />
+</vector>

@@ -1,9 +1,10 @@
-"""Boot the embedded sardinetracker server (milestone 2).
+"""Boot the embedded sardinetracker server.
 
-Called from Kotlin with the app's private files dir. Prepares everything a
-fresh self-hosted install would need (config.json, database, the one user),
-then imports the vendored server — the SAME code that runs on a Pi — with
-the embedded-mode switches set (see DATA_DIR in tracker/app.py).
+Called from Kotlin with the app's private files dir. _prepare() does the
+platform setup a fresh self-hosted install would need (env switches,
+config.json, database, the one user) and is shared with notifications.py,
+which runs the reminder checks WITHOUT a server. start() adds Flask on top —
+the SAME code that runs on a Pi (see DATA_DIR in tracker/app.py).
 """
 import json
 import os
@@ -11,6 +12,31 @@ import secrets
 import sys
 
 TRACKER_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "tracker")
+
+_prepared = False
+
+
+def _prepare(files_dir, timezone):
+    """Idempotent: env switches, sys.path, cwd, config, database, sole user."""
+    global _prepared
+    if _prepared:
+        return
+    if TRACKER_DIR not in sys.path:
+        sys.path.insert(0, TRACKER_DIR)
+
+    os.makedirs(files_dir, exist_ok=True)
+    os.environ["SARDINE_DATA_DIR"] = files_dir
+    os.environ["SARDINE_EMBEDDED"] = "1"
+    # Notifications queue in the DB for NotificationWorker to deliver
+    # natively — no ntfy on a phone that notifies itself.
+    os.environ["SARDINE_NOTIFY_QUEUE"] = "1"
+    # setup.py and some legacy paths are CWD-relative; make CWD the data dir
+    # so every spelling of "next to the app" lands in app-private storage.
+    os.chdir(files_dir)
+
+    _ensure_config(files_dir, timezone)
+    _ensure_user()
+    _prepared = True
 
 
 def _ensure_config(files_dir, timezone):
@@ -26,7 +52,7 @@ def _ensure_config(files_dir, timezone):
         # Exactly one person owns this phone: skip the login screen.
         "single_user_mode": True,
         # Both secrets are per-install and never leave the device. The
-        # api_token gates /api/health-sync for the milestone-3 sync bridge.
+        # api_token gates /api/health-sync for the sync bridge.
         "secret_key": secrets.token_hex(32),
         "api_token": secrets.token_hex(16),
         "track_cycle": False,
@@ -52,17 +78,6 @@ def _ensure_user():
 
 
 def start(files_dir, port, timezone):
-    sys.path.insert(0, TRACKER_DIR)
-
-    os.makedirs(files_dir, exist_ok=True)
-    os.environ["SARDINE_DATA_DIR"] = files_dir
-    os.environ["SARDINE_EMBEDDED"] = "1"
-    # setup.py and some legacy paths are CWD-relative; make CWD the data dir
-    # so every spelling of "next to the app" lands in app-private storage.
-    os.chdir(files_dir)
-
-    _ensure_config(files_dir, timezone)
-    _ensure_user()
-
+    _prepare(files_dir, timezone)
     from app import app  # the vendored tracker — import AFTER env is set
     app.run(host="127.0.0.1", port=port, threaded=True)
