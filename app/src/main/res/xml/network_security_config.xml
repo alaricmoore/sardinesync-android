@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- HTTPS everywhere, with one exception: 10.0.2.2 is the Android emulator's
+     alias for the host machine, used to test against a local dev server.
+     It is unroutable on real devices, so this changes nothing for users. -->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="false" />
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="false">10.0.2.2</domain>
+    </domain-config>
+</network-security-config>
