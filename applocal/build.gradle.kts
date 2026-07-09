@@ -2,10 +2,21 @@
 // Chaquopy embeds CPython; Flask serves on 127.0.0.1 and the WebView is the UI.
 // Kept as a separate module from :app so the companion APK never carries the
 // Python runtime (see notes/local-mode-plan.md).
+import java.io.FileInputStream
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
     id("com.chaquo.python")
+}
+
+// Release signing secrets live in applocal/keystore.properties (gitignored).
+// Absent on a fresh clone — the release build then stays unsigned rather than
+// failing. Same shape and same keystore as the :app module.
+val keystorePropsFile = file("keystore.properties")
+val keystoreProps = Properties().apply {
+    if (keystorePropsFile.exists()) load(FileInputStream(keystorePropsFile))
 }
 
 android {
@@ -17,12 +28,32 @@ android {
         minSdk = 30
         targetSdk = 35
         versionCode = 1
-        versionName = "0.1-milestone1"
+        versionName = "0.1"
 
         ndk {
             // arm64 = real phones; x86_64 = the emulator. Chaquopy requires
             // an explicit list, and each ABI adds a full Python runtime.
             abiFilters += listOf("arm64-v8a", "x86_64")
+        }
+    }
+
+    signingConfigs {
+        create("release") {
+            if (keystorePropsFile.exists()) {
+                storeFile = file(keystoreProps["storeFile"] as String)
+                storePassword = keystoreProps["storePassword"] as String
+                keyAlias = keystoreProps["keyAlias"] as String
+                keyPassword = keystoreProps["keyPassword"] as String
+            }
+        }
+    }
+
+    buildTypes {
+        release {
+            isMinifyEnabled = false
+            if (keystorePropsFile.exists()) {
+                signingConfig = signingConfigs.getByName("release")
+            }
         }
     }
 

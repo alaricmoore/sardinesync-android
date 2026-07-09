@@ -1,22 +1,29 @@
-# GitHub Actions workflow: build a signed release APK on GitHub's servers.
+# GitHub Actions workflow: build both signed release APKs on GitHub's servers.
 #
 # How to cut a release:   git tag v0.3 && git push origin v0.3
-# That's it — this file does the rest. A few minutes later the APK appears at
+# That's it — this file does the rest. A few minutes later both APKs appear at
 # https://github.com/alaricmoore/sardinesync-android/releases
+#
+# Two apps are built from this one repo (see notes/local-mode-plan.md):
+#   • sardinesync   (:app)      — the companion: syncs to YOUR OWN server.
+#   • sardinetracker (:applocal) — local mode: the whole server runs on-phone
+#                                  (Chaquopy-embedded Python). Bigger APK.
+# They install side by side (different package ids) and both attach to the
+# same release.
 #
 # The signing secrets (keystore + passwords) are NOT in this file or the repo.
 # They live in the repo's encrypted secret store (Settings → Secrets → Actions)
 # and are injected at build time. Anyone can read this file; only the build
 # runner can read the secrets.
 
-name: Release APK
+name: Release APKs
 
 # "on" = which events wake this workflow up.
 on:
   push:
-    tags: ["v*"]        # any tag starting with v, e.g. v0.2
+    tags: ["v*"]        # any tag starting with v, e.g. v0.3
   workflow_dispatch:     # also adds a manual "Run workflow" button in the
-                         # Actions tab — a dry run that builds the APK but
+                         # Actions tab — a dry run that builds the APKs but
                          # skips the release step (see the `if:` below).
 
 # The workflow authenticates as a robot user with minimal rights.
@@ -41,14 +48,34 @@ jobs:
           distribution: temurin   # a well-maintained OpenJDK build
           java-version: "21"      # AGP does not yet run under JDK 25
 
+      # The local app embeds CPython via Chaquopy, which needs a matching
+      # Python on the BUILD machine (buildPython). 3.10 is the version whose
+      # native wheels (scipy etc.) Chaquopy fully ships — see applocal's
+      # build.gradle.kts. The companion app doesn't use this.
+      - name: Install Python 3.10 (Chaquopy buildPython)
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+
+      # Chaquopy looks for `python3.10` on PATH. setup-python guarantees
+      # `python`/`python3`; this symlink guarantees the versioned name too.
+      - name: Ensure python3.10 is on PATH
+        run: |
+          if ! command -v python3.10 >/dev/null; then
+            ln -s "$(command -v python)" "$HOME/.local/bin/python3.10"
+            echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          fi
+
       # Caches Gradle downloads between runs so builds take ~2 min, not ~6.
       - name: Set up Gradle cache
         uses: gradle/actions/setup-gradle@v4
 
       # Recreate exactly what a local release build expects: the keystore file
-      # and app/keystore.properties pointing at it. The keystore is stored as
-      # one long base64 string because secrets can only hold text, not files.
-      # $RUNNER_TEMP is a scratch dir on the VM, wiped when the job ends.
+      # and a keystore.properties in EACH app module pointing at it. The
+      # keystore is stored as one long base64 string because secrets can only
+      # hold text, not files. $RUNNER_TEMP is a scratch dir wiped when the job
+      # ends. Both modules share one keystore, so both apps are signed with the
+      # same key.
       - name: Reconstruct signing keystore from secrets
         env:
           KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
@@ -57,37 +84,45 @@ jobs:
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
         run: |
           printf '%s' "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/release.jks"
-          {
-            printf 'storeFile=%s\n'     "$RUNNER_TEMP/release.jks"
-            printf 'storePassword=%s\n' "$KEYSTORE_PASSWORD"
-            printf 'keyAlias=%s\n'      "$KEY_ALIAS"
-            printf 'keyPassword=%s\n'   "$KEY_PASSWORD"
-          } > app/keystore.properties
+          for module in app applocal; do
+            {
+              printf 'storeFile=%s\n'     "$RUNNER_TEMP/release.jks"
+              printf 'storePassword=%s\n' "$KEYSTORE_PASSWORD"
+              printf 'keyAlias=%s\n'      "$KEY_ALIAS"
+              printf 'keyPassword=%s\n'   "$KEY_PASSWORD"
+            } > "$module/keystore.properties"
+          done
 
-      - name: Build signed release APK
-        run: ./gradlew :app:assembleRelease
+      - name: Build both signed release APKs
+        run: ./gradlew :app:assembleRelease :applocal:assembleRelease
 
-      # Give the APK a name that says what it is. GITHUB_REF_NAME is the tag
-      # (v0.2) on tag builds, or the branch (main) on manual dry runs.
-      - name: Name the APK
+      # Give each APK a name that says what it is. GITHUB_REF_NAME is the tag
+      # (v0.3) on tag builds, or the branch (main) on manual dry runs.
+      - name: Name the APKs
         run: |
           if [[ "$GITHUB_REF_NAME" == v* ]]; then
-            apk="sardinesync-$GITHUB_REF_NAME.apk"
+            suffix="$GITHUB_REF_NAME"
           else
-            apk="sardinesync-dev.apk"
+            suffix="dev"
           fi
-          cp app/build/outputs/apk/release/app-release.apk "$apk"
-          echo "APK_NAME=$apk" >> "$GITHUB_ENV"   # pass the name to later steps
+          companion="sardinesync-$suffix.apk"
+          local="sardinetracker-local-$suffix.apk"
+          cp app/build/outputs/apk/release/app-release.apk "$companion"
+          cp applocal/build/outputs/apk/release/applocal-release.apk "$local"
+          echo "COMPANION_APK=$companion" >> "$GITHUB_ENV"
+          echo "LOCAL_APK=$local" >> "$GITHUB_ENV"
 
-      # Always attach the APK to the workflow run itself (visible in the
+      # Always attach both APKs to the workflow run itself (visible in the
       # Actions tab for 90 days) — this is what a manual dry run produces.
-      - name: Upload APK as build artifact
+      - name: Upload APKs as build artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ env.APK_NAME }}
-          path: ${{ env.APK_NAME }}
+          name: apks-${{ github.ref_name }}
+          path: |
+            ${{ env.COMPANION_APK }}
+            ${{ env.LOCAL_APK }}
 
-      # Only on real tags: create the public Release with the APK attached.
+      # Only on real tags: create the public Release with both APKs attached.
       # `gh` is preinstalled on the runner; github.token is a short-lived
       # credential GitHub mints for this run automatically.
       - name: Create GitHub Release
@@ -95,6 +130,6 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "$GITHUB_REF_NAME" "$APK_NAME" \
+          gh release create "$GITHUB_REF_NAME" "$COMPANION_APK" "$LOCAL_APK" \
             --title "SardineSync $GITHUB_REF_NAME" \
             --generate-notes
