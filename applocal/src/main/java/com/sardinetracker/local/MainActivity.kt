@@ -57,26 +57,34 @@ class MainActivity : Activity() {
         if (serverStarted) return
         serverStarted = true
         if (!Python.isStarted()) Python.start(AndroidPlatform(this))
-        // app.run() blocks forever, so it gets a plain background thread.
+        val filesDir = filesDir.absolutePath
+        val tz = java.util.TimeZone.getDefault().id
+        // bootstrap.start() blocks forever (it becomes the Flask process),
+        // so it gets a plain background thread.
         thread(name = "flask") {
-            Python.getInstance().getModule("server").callAttr("run", port)
+            Python.getInstance().getModule("bootstrap").callAttr("start", filesDir, port, tz)
         }
     }
 
-    /** Poll /health until Flask binds the port (WebView must not race it). */
-    private suspend fun waitForServer(timeoutMs: Long = 15_000): Boolean =
+    /**
+     * Poll / until the server answers (WebView must not race the bind).
+     * First-run does real work before binding — database creation, config —
+     * so the timeout is generous. Any HTTP status < 500 counts as alive
+     * (auto-login makes / a 302 -> /daily 200 chain).
+     */
+    private suspend fun waitForServer(timeoutMs: Long = 60_000): Boolean =
         withContext(Dispatchers.IO) {
             val deadline = System.currentTimeMillis() + timeoutMs
             while (System.currentTimeMillis() < deadline) {
                 try {
-                    val conn = URL("$base/health").openConnection() as HttpURLConnection
-                    conn.connectTimeout = 500
-                    conn.readTimeout = 500
-                    if (conn.responseCode == 200) return@withContext true
+                    val conn = URL("$base/").openConnection() as HttpURLConnection
+                    conn.connectTimeout = 1000
+                    conn.readTimeout = 3000
+                    if (conn.responseCode < 500) return@withContext true
                 } catch (_: Exception) {
                     // not up yet
                 }
-                delay(200)
+                delay(250)
             }
             false
         }

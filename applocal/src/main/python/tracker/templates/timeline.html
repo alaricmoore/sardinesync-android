@@ -1,0 +1,523 @@
+{% extends "base.html" %}
+
+{% block title %}model dashboard — sardinetracker{% endblock %}
+
+{% block head %}
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>model dashboard</h1>
+    <p class="page-subtitle">
+        {% if has_data %}
+            score attribution over {{ n_days }} days of observation
+        {% else %}
+            no data yet
+        {% endif %}
+    </p>
+</div>
+
+{% if not has_data %}
+<div class="card">
+    <p>Start logging daily observations to see your model's behavior over time.</p>
+</div>
+{% else %}
+
+<!-- Model sub-view nav -->
+<div style="display:flex; gap:var(--space-md); margin-bottom:var(--space-md); flex-wrap:wrap;">
+    <a href="{{ url_for('forecast_accuracy') }}" class="btn btn-secondary">accuracy</a>
+    <a href="{{ url_for('forecast_history') }}" class="btn btn-secondary">history</a>
+    <a href="{{ url_for('forecast_patterns') }}" class="btn btn-secondary">pre-flare patterns</a>
+</div>
+
+<!-- Date range controls -->
+<div style="margin-bottom:var(--space-lg); display:flex; gap:var(--space-sm); flex-wrap:wrap;">
+    {% for d, label in [(30, '30d'), (60, '60d'), (90, '90d'), (0, 'all')] %}
+    <a href="?days={{ d }}"
+       style="padding:var(--space-xs) var(--space-sm); border-radius:4px; text-decoration:none; font-size:0.85rem;
+              {% if days_param == d|string %}background:var(--color-accent); color:#fff;{% else %}background:var(--bg-secondary); color:var(--text-secondary);{% endif %}">
+        {{ label }}
+    </a>
+    {% endfor %}
+</div>
+
+<!-- Score attribution chart -->
+<div class="card" style="margin-bottom:var(--space-xl);">
+    <div class="card-title">score attribution</div>
+    <p style="font-size:0.8rem; color:var(--text-muted); margin-bottom:var(--space-md);">
+        Daily flare score broken down by what's driving it. The dashed line is the flare threshold.
+        Vertical markers show actual flare events.
+    </p>
+    <div style="font-size:0.75rem; color:var(--text-muted); margin-bottom:var(--space-sm);">
+        <span style="color:#d4b84a;">&#9632;</span> UV
+        <span style="color:#d4a054; margin-left:0.5rem;">&#9632;</span> exertion
+        <span style="color:#c94040; margin-left:0.5rem;">&#9632;</span> temperature
+        <span style="color:#9b72cf; margin-left:0.5rem;">&#9632;</span> symptoms
+        <span style="color:#e85d9e; margin-left:0.5rem;">&#9632;</span> pain/fatigue
+        <span style="color:#5b9bd5; margin-left:0.5rem;">&#9632;</span> burden delta
+        <span style="color:#66bb6a; margin-left:0.5rem;">&#9632;</span> RMSSD
+        <span style="color:#e0a050; margin-left:0.5rem;">&#9632;</span> resp rate
+    </div>
+    <canvas id="chartAttribution" style="max-height:360px;"></canvas>
+</div>
+
+<!-- Multi-day predictor panel -->
+<div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(300px, 1fr)); gap:var(--space-md); margin-bottom:var(--space-xl);">
+    <div class="card">
+        <div style="display:flex; justify-content:space-between; align-items:baseline; gap:var(--space-sm);">
+            <div class="card-title">symptom burden delta</div>
+            <span style="font-size:0.7rem; color:var(--text-muted);">click to expand ⤢</span>
+        </div>
+        <p style="font-size:0.75rem; color:var(--text-muted); margin-bottom:var(--space-sm);">
+            3-day avg minus 14-day baseline. Positive = symptoms accelerating above your normal.
+        </p>
+        <canvas id="chartBurdenDelta" style="max-height:200px; cursor:pointer;"></canvas>
+    </div>
+    <div class="card">
+        <div style="display:flex; justify-content:space-between; align-items:baseline; gap:var(--space-sm);">
+            <div class="card-title">RMSSD deviation</div>
+            <span style="font-size:0.7rem; color:var(--text-muted);">click to expand ⤢</span>
+        </div>
+        <p style="font-size:0.75rem; color:var(--text-muted); margin-bottom:var(--space-sm);">
+            7-day rolling vs 30-day baseline. Negative = vagal withdrawal (inflammatory brake weakening).
+        </p>
+        <canvas id="chartRmssdDev" style="max-height:200px; cursor:pointer;"></canvas>
+    </div>
+    <div class="card">
+        <div style="display:flex; justify-content:space-between; align-items:baseline; gap:var(--space-sm);">
+            <div class="card-title">respiratory rate deviation</div>
+            <span style="font-size:0.7rem; color:var(--text-muted);">click to expand ⤢</span>
+        </div>
+        <p style="font-size:0.75rem; color:var(--text-muted); margin-bottom:var(--space-sm);">
+            3-day rolling vs 14-day baseline. Positive = elevated rate (pre-event signal).
+        </p>
+        <canvas id="chartRespRateDev" style="max-height:200px; cursor:pointer;"></canvas>
+    </div>
+</div>
+
+<!-- Chart expansion modal -->
+<div id="chartModal" onclick="if(event.target===this) closeChartModal()"
+     style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.82); z-index:1000;
+            align-items:center; justify-content:center; padding:var(--space-lg);">
+    <div style="background:var(--bg-surface); border:1px solid var(--border-medium); border-radius:8px;
+                padding:var(--space-lg); max-width:1400px; width:100%; max-height:92vh;
+                display:flex; flex-direction:column;">
+        <div style="display:flex; justify-content:space-between; align-items:center; gap:var(--space-md);
+                    margin-bottom:var(--space-sm);">
+            <div id="chartModalTitle" class="card-title" style="margin:0;"></div>
+            <button type="button" onclick="closeChartModal()"
+                    style="background:none; border:1px solid var(--border-medium); color:var(--text-primary);
+                           padding:4px 12px; border-radius:4px; cursor:pointer; font-size:0.85rem;">
+                close · esc
+            </button>
+        </div>
+        <p id="chartModalSubtitle" style="font-size:0.8rem; color:var(--text-muted);
+                                           margin:0 0 var(--space-md) 0;"></p>
+        <div style="flex:1; min-height:0; position:relative;">
+            <canvas id="chartModalCanvas"></canvas>
+        </div>
+    </div>
+</div>
+
+<!-- Score distribution -->
+<div class="card" style="margin-bottom:var(--space-xl);">
+    <div class="card-title">score distribution: flare days vs non-flare days</div>
+    <p style="font-size:0.8rem; color:var(--text-muted); margin-bottom:var(--space-md);">
+        Are the model's scores actually separating flare days from normal days?
+    </p>
+    <div style="display:grid; grid-template-columns:1fr 1fr; gap:var(--space-lg);">
+        {% if distribution.nonflare %}
+        <div style="font-size:0.85rem;">
+            <div style="color:var(--text-secondary); margin-bottom:var(--space-xs); font-weight:600;">non-flare days (n={{ distribution.nonflare.n }})</div>
+            <div style="display:flex; gap:var(--space-md); flex-wrap:wrap;">
+                <span>median: <strong>{{ distribution.nonflare.median }}</strong></span>
+                <span>mean: <strong>{{ distribution.nonflare.mean }}</strong></span>
+                <span>Q1-Q3: {{ distribution.nonflare.q1 }}–{{ distribution.nonflare.q3 }}</span>
+                <span>range: {{ distribution.nonflare.min }}–{{ distribution.nonflare.max }}</span>
+            </div>
+        </div>
+        {% endif %}
+        {% if distribution.flare %}
+        <div style="font-size:0.85rem;">
+            <div style="color:var(--color-danger); margin-bottom:var(--space-xs); font-weight:600;">flare days (n={{ distribution.flare.n }})</div>
+            <div style="display:flex; gap:var(--space-md); flex-wrap:wrap;">
+                <span>median: <strong>{{ distribution.flare.median }}</strong></span>
+                <span>mean: <strong>{{ distribution.flare.mean }}</strong></span>
+                <span>Q1-Q3: {{ distribution.flare.q1 }}–{{ distribution.flare.q3 }}</span>
+                <span>range: {{ distribution.flare.min }}–{{ distribution.flare.max }}</span>
+            </div>
+        </div>
+        {% else %}
+        <div style="font-size:0.85rem; color:var(--text-muted);">no flare events in this window</div>
+        {% endif %}
+    </div>
+</div>
+
+<!-- Prediction accuracy strip -->
+<div class="card" style="margin-bottom:var(--space-xl);">
+    <div class="card-title">prediction accuracy</div>
+    <p style="font-size:0.8rem; color:var(--text-muted); margin-bottom:var(--space-md);">
+        Each dot is one day. Green = correct prediction, red = missed flare, orange = false alarm.
+    </p>
+    <div id="accuracyStrip" style="display:flex; flex-wrap:wrap; gap:2px;"></div>
+    <div id="accuracyStats" style="font-size:0.8rem; color:var(--text-secondary); margin-top:var(--space-sm);"></div>
+</div>
+
+<!-- Export -->
+<div style="text-align:right; margin-bottom:var(--space-xl);">
+    <a href="{{ url_for('timeline_export') }}"
+       style="font-size:0.85rem; color:var(--text-secondary); text-decoration:none; padding:var(--space-xs) var(--space-sm);
+              background:var(--bg-secondary); border-radius:4px;">
+        export scores as CSV
+    </a>
+</div>
+
+<!-- Hacker prompt easter egg -->
+<div style="position:fixed; bottom:20px; right:20px; cursor:pointer;
+            opacity:0.6; transition:opacity 0.2s;"
+     onmouseover="this.style.opacity='1'"
+     onmouseout="this.style.opacity='0.6'"
+     onclick="window.location.href='{{ url_for('forecast_lab') }}'">
+    <div style="font-family:var(--font-mono); font-size:1.5rem;
+                color:#4ade80; text-shadow:0 0 10px rgba(74,222,128,0.5);">
+        &gt;&gt;
+    </div>
+</div>
+
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+{% if has_data %}
+<script>
+(function() {
+    const D = {{ daily_json | safe }};
+    const THRESHOLD = {{ threshold }};
+    const dates = D.map(d => d.date);
+    const GRID = 'rgba(255,255,255,0.06)';
+    const FONT = "'Source Serif 4', 'Times New Roman', serif";
+
+    Chart.defaults.font.family = FONT;
+    Chart.defaults.font.size = 12;
+    Chart.defaults.color = '#9994a8';
+
+    // ── Flare marker plugin ──
+    const flarePlugin = {
+        id: 'flareMarkers',
+        afterDraw(chart) {
+            const { ctx, chartArea, scales } = chart;
+            if (!chartArea || !scales.x) return;
+            const COLORS = { er_visit: '#ff4444', major: '#ff8c00', minor: '#ffcc00' };
+            D.forEach((d, i) => {
+                if (!d.flare) return;
+                const x = scales.x.getPixelForValue(i);
+                if (x < chartArea.left || x > chartArea.right) return;
+                ctx.save();
+                ctx.beginPath();
+                ctx.moveTo(x, chartArea.top);
+                ctx.lineTo(x, chartArea.bottom);
+                ctx.strokeStyle = COLORS[d.severity] || '#ffcc00';
+                ctx.lineWidth = 1.5;
+                ctx.globalAlpha = 0.6;
+                ctx.stroke();
+                ctx.restore();
+            });
+        }
+    };
+
+    // ── Threshold line plugin ──
+    const thresholdPlugin = {
+        id: 'thresholdLine',
+        afterDraw(chart) {
+            const { ctx, chartArea, scales } = chart;
+            if (!chartArea || !scales.y) return;
+            const y = scales.y.getPixelForValue(THRESHOLD);
+            if (y < chartArea.top || y > chartArea.bottom) return;
+            ctx.save();
+            ctx.beginPath();
+            ctx.moveTo(chartArea.left, y);
+            ctx.lineTo(chartArea.right, y);
+            ctx.strokeStyle = 'rgba(255,255,255,0.4)';
+            ctx.lineWidth = 1.5;
+            ctx.setLineDash([6, 4]);
+            ctx.stroke();
+            // Label
+            ctx.fillStyle = 'rgba(255,255,255,0.5)';
+            ctx.font = '10px ' + FONT;
+            ctx.textAlign = 'right';
+            ctx.fillText('threshold ' + THRESHOLD, chartArea.right - 4, y - 4);
+            ctx.restore();
+        }
+    };
+
+    // ── 1. Score attribution stacked bar ──
+    const COMPONENTS = [
+        { key: 'uv',           label: 'UV',           color: '#d4b84a' },
+        { key: 'exertion',     label: 'exertion',     color: '#d4a054' },
+        { key: 'temperature',  label: 'temperature',  color: '#c94040' },
+        { key: 'symptoms',     label: 'symptoms',     color: '#9b72cf' },
+        { key: 'pain_fatigue', label: 'pain/fatigue', color: '#e85d9e' },
+        { key: 'burden_delta', label: 'burden delta', color: '#5b9bd5' },
+        { key: 'rmssd',        label: 'RMSSD',        color: '#66bb6a' },
+        { key: 'resp_rate',   label: 'resp rate',   color: '#e0a050' },
+    ];
+
+    const stackedDatasets = COMPONENTS.map(c => ({
+        label: c.label,
+        data: D.map(d => d[c.key]),
+        backgroundColor: c.color,
+        borderWidth: 0,
+        borderSkipped: false,
+    }));
+
+    new Chart(document.getElementById('chartAttribution'), {
+        type: 'bar',
+        plugins: [flarePlugin, thresholdPlugin],
+        data: { labels: dates, datasets: stackedDatasets },
+        options: {
+            responsive: true,
+            interaction: { mode: 'index', intersect: false },
+            scales: {
+                x: {
+                    stacked: true,
+                    grid: { color: GRID },
+                    ticks: {
+                        maxTicksLimit: 15,
+                        callback: function(val, idx) {
+                            const d = dates[idx];
+                            return d ? d.slice(5) : '';  // MM-DD
+                        }
+                    }
+                },
+                y: {
+                    stacked: true,
+                    grid: { color: GRID },
+                    title: { display: true, text: 'score', color: '#9994a8' }
+                }
+            },
+            plugins: {
+                legend: { display: false },
+                tooltip: {
+                    backgroundColor: '#1e1e28',
+                    borderColor: '#2a2a38',
+                    borderWidth: 1,
+                    padding: 10,
+                    cornerRadius: 6,
+                    callbacks: {
+                        title: function(items) {
+                            const idx = items[0].dataIndex;
+                            const d = D[idx];
+                            let t = d.date;
+                            if (d.flare) t += ' — ' + (d.severity === 'er_visit' ? 'ER visit' : d.severity + ' flare');
+                            return t;
+                        },
+                        afterBody: function(items) {
+                            const idx = items[0].dataIndex;
+                            return ['total: ' + D[idx].total];
+                        }
+                    }
+                }
+            }
+        }
+    });
+
+    // ── Deviation chart factories (reused for inline + modal) ──
+    const burdenVals = D.map(d => d.burden_delta_raw);
+    const rmssdVals = D.map(d => d.rmssd_deviation_raw);
+    const respVals = D.map(d => d.resp_rate_deviation_raw);
+
+    const respThresholdPlugin = {
+        id: 'respThreshold',
+        afterDatasetsDraw(chart) {
+            const { ctx, chartArea, scales } = chart;
+            if (!scales.y) return;
+            const lines = [
+                { v: 10, color: 'rgba(224,160,80,0.35)' },
+                { v: 15, color: 'rgba(201,64,64,0.45)' }
+            ];
+            ctx.save();
+            ctx.setLineDash([4, 4]);
+            ctx.lineWidth = 1;
+            lines.forEach(l => {
+                const y = scales.y.getPixelForValue(l.v);
+                if (y < chartArea.top || y > chartArea.bottom) return;
+                ctx.strokeStyle = l.color;
+                ctx.beginPath();
+                ctx.moveTo(chartArea.left, y);
+                ctx.lineTo(chartArea.right, y);
+                ctx.stroke();
+            });
+            ctx.restore();
+        }
+    };
+
+    function makeDeviationConfig(opts) {
+        // opts: { data, plugins, borderColor, backgroundColor, fillAbove, fillBelow, yTitle, tooltipFormat }
+        return {
+            type: 'line',
+            plugins: opts.plugins,
+            data: {
+                labels: dates,
+                datasets: [{
+                    data: opts.data,
+                    borderColor: opts.borderColor,
+                    backgroundColor: opts.backgroundColor,
+                    borderWidth: 1.5,
+                    pointRadius: 0,
+                    pointHoverRadius: 3,
+                    fill: { target: 'origin', above: opts.fillAbove, below: opts.fillBelow },
+                    tension: 0.3,
+                    spanGaps: true,
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: opts.maintainAspectRatio !== false,
+                interaction: { mode: 'index', intersect: false },
+                scales: {
+                    x: {
+                        grid: { color: GRID },
+                        ticks: { maxTicksLimit: opts.maintainAspectRatio === false ? 16 : 8,
+                                 callback: (v,i) => dates[i] ? dates[i].slice(5) : '' }
+                    },
+                    y: {
+                        grid: { color: GRID },
+                        title: { display: true, text: opts.yTitle, color: '#9994a8' }
+                    }
+                },
+                plugins: {
+                    legend: { display: false },
+                    tooltip: {
+                        backgroundColor: '#1e1e28', borderColor: '#2a2a38', borderWidth: 1,
+                        padding: 8, cornerRadius: 6,
+                        callbacks: {
+                            label: ctx => ctx.parsed.y !== null ? opts.tooltipFormat(ctx.parsed.y) : 'no data'
+                        }
+                    }
+                }
+            }
+        };
+    }
+
+    const DEVIATION_CHARTS = {
+        burden: {
+            title: 'symptom burden delta',
+            subtitle: '3-day avg minus 14-day baseline. Positive = symptoms accelerating above your normal.',
+            build: (opts = {}) => makeDeviationConfig({
+                data: burdenVals,
+                plugins: [flarePlugin],
+                borderColor: '#5b9bd5',
+                backgroundColor: 'rgba(91,155,213,0.1)',
+                fillAbove: 'rgba(91,155,213,0.1)',
+                fillBelow: 'transparent',
+                yTitle: 'delta (symptoms)',
+                tooltipFormat: v => 'delta: ' + v.toFixed(1),
+                ...opts
+            })
+        },
+        rmssd: {
+            title: 'RMSSD deviation',
+            subtitle: '7-day rolling vs 30-day baseline. Negative = vagal withdrawal (inflammatory brake weakening).',
+            build: (opts = {}) => makeDeviationConfig({
+                data: rmssdVals,
+                plugins: [flarePlugin],
+                borderColor: '#66bb6a',
+                backgroundColor: 'rgba(102,187,106,0.1)',
+                fillAbove: 'transparent',
+                fillBelow: 'rgba(255,68,68,0.08)',
+                yTitle: 'deviation %',
+                tooltipFormat: v => v.toFixed(1) + '%',
+                ...opts
+            })
+        },
+        resp: {
+            title: 'respiratory rate deviation',
+            subtitle: '3-day rolling vs 14-day baseline. Positive = elevated rate (pre-event signal). Dashed lines at +10% / +15% show scoring thresholds.',
+            build: (opts = {}) => makeDeviationConfig({
+                data: respVals,
+                plugins: [flarePlugin, respThresholdPlugin],
+                borderColor: '#e0a050',
+                backgroundColor: 'rgba(224,160,80,0.12)',
+                fillAbove: 'rgba(224,160,80,0.15)',
+                fillBelow: 'transparent',
+                yTitle: 'deviation %',
+                tooltipFormat: v => v.toFixed(1) + '%',
+                ...opts
+            })
+        }
+    };
+
+    new Chart(document.getElementById('chartBurdenDelta'), DEVIATION_CHARTS.burden.build());
+    new Chart(document.getElementById('chartRmssdDev'), DEVIATION_CHARTS.rmssd.build());
+    new Chart(document.getElementById('chartRespRateDev'), DEVIATION_CHARTS.resp.build());
+
+    // ── Modal: click any deviation chart to expand ──
+    let modalChart = null;
+
+    function openChartModal(key) {
+        const spec = DEVIATION_CHARTS[key];
+        if (!spec) return;
+        document.getElementById('chartModalTitle').textContent = spec.title;
+        document.getElementById('chartModalSubtitle').textContent = spec.subtitle;
+        document.getElementById('chartModal').style.display = 'flex';
+        if (modalChart) { modalChart.destroy(); modalChart = null; }
+        requestAnimationFrame(() => {
+            modalChart = new Chart(
+                document.getElementById('chartModalCanvas'),
+                spec.build({ maintainAspectRatio: false })
+            );
+        });
+    }
+
+    function closeChartModal() {
+        document.getElementById('chartModal').style.display = 'none';
+        if (modalChart) { modalChart.destroy(); modalChart = null; }
+    }
+    window.closeChartModal = closeChartModal;
+
+    document.getElementById('chartBurdenDelta').addEventListener('click', () => openChartModal('burden'));
+    document.getElementById('chartRmssdDev').addEventListener('click', () => openChartModal('rmssd'));
+    document.getElementById('chartRespRateDev').addEventListener('click', () => openChartModal('resp'));
+
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && document.getElementById('chartModal').style.display === 'flex') {
+            closeChartModal();
+        }
+    });
+
+    // ── 4. Prediction accuracy strip ──
+    const strip = document.getElementById('accuracyStrip');
+    const stats = { correct: 0, missed: 0, falseAlarm: 0 };
+
+    D.forEach(d => {
+        const predicted = d.total >= THRESHOLD;
+        const actual = d.flare;
+        let color, title;
+
+        if (predicted && actual) {
+            color = '#66bb6a'; title = d.date + ': caught flare'; stats.correct++;
+        } else if (!predicted && !actual) {
+            color = '#4a4a5a'; title = d.date + ': correct (no flare)'; stats.correct++;
+        } else if (!predicted && actual) {
+            color = '#ff4444'; title = d.date + ': MISSED ' + (d.severity || 'flare'); stats.missed++;
+        } else {
+            color = '#ff8c00'; title = d.date + ': false alarm'; stats.falseAlarm++;
+        }
+
+        const dot = document.createElement('div');
+        dot.style.cssText = 'width:8px; height:8px; border-radius:50%; cursor:default;';
+        dot.style.backgroundColor = color;
+        dot.title = title;
+        strip.appendChild(dot);
+    });
+
+    const total = D.length;
+    const acc = total > 0 ? ((stats.correct / total) * 100).toFixed(1) : 0;
+    document.getElementById('accuracyStats').textContent =
+        acc + '% accurate — ' + stats.correct + ' correct, ' +
+        stats.missed + ' missed, ' + stats.falseAlarm + ' false alarms (' + total + ' days)';
+})();
+</script>
+{% endif %}
+{% endblock %}

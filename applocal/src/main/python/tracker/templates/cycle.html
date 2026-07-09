@@ -1,0 +1,855 @@
+{% extends "base.html" %}
+
+{% block title %}cycle — {{ month_name }} — sardinetracker{% endblock %}
+
+{% block head %}
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+.chart-preset-btn {
+    padding: var(--space-xs) var(--space-md);
+    border: 1px solid var(--border-medium);
+    border-radius: var(--radius-sm);
+    background: transparent;
+    color: var(--text-secondary);
+    font-family: var(--font-body);
+    cursor: pointer;
+    transition: all 0.15s;
+}
+.chart-preset-btn:hover,
+.chart-preset-btn.active {
+    background: var(--bg-elevated);
+    color: var(--text-primary);
+    border-color: var(--color-accent);
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>cycle</h1>
+    <p class="page-subtitle">{{ month_name }}</p>
+</div>
+
+<!-- Month navigation -->
+<div class="date-nav">
+    <a href="{{ url_for('cycle_view', year=prev_year, month=prev_month) }}" class="date-nav-btn">
+        ← previous
+    </a>
+    <div class="date-nav-center">
+        <span style="color: var(--text-secondary); font-size: 1rem;">{{ month_name }}</span>
+    </div>
+    <a href="{{ url_for('cycle_view', year=next_year, month=next_month) }}" class="date-nav-btn">
+        next →
+    </a>
+</div>
+
+
+<!-- Legend -->
+<div class="card" style="margin-top: var(--space-lg);">
+    <div style="font-size: 0.75rem; color: var(--text-muted); margin-bottom: var(--space-sm);">legend</div>
+    <div style="display: flex; gap: var(--space-lg); flex-wrap: wrap; align-items: center; font-size: 0.8rem;">
+
+        <div style="display: flex; gap: var(--space-md); align-items: center;">
+            <div style="display: flex; gap: var(--space-sm); align-items: center;">
+                <div style="width: 14px; height: 4px; background: var(--cycle-flow-heavy); border-radius: 2px;"></div>
+                <span style="color: var(--text-muted);">heavy</span>
+            </div>
+            <div style="display: flex; gap: var(--space-sm); align-items: center;">
+                <div style="width: 14px; height: 4px; background: var(--cycle-flow-medium); border-radius: 2px;"></div>
+                <span style="color: var(--text-muted);">medium</span>
+            </div>
+            <div style="display: flex; gap: var(--space-sm); align-items: center;">
+                <div style="width: 14px; height: 4px; background: var(--cycle-flow-light); border-radius: 2px;"></div>
+                <span style="color: var(--text-muted);">light</span>
+            </div>
+            <div style="display: flex; gap: var(--space-sm); align-items: center;">
+                <div style="width: 14px; height: 4px; background: var(--cycle-flow-spotting); border-radius: 2px;"></div>
+                <span style="color: var(--text-muted);">spotting</span>
+            </div>
+        </div>
+
+        <div style="width: 1px; height: 16px; background: var(--border-subtle);"></div>
+
+        <div style="display: flex; gap: var(--space-md); align-items: center;">
+            <div style="display: flex; gap: var(--space-sm); align-items: center;">
+                <div style="width: 14px; height: 14px; border-radius: 2px;
+                            background: var(--cycle-pms-bg);
+                            border: 1px solid var(--border-subtle);"></div>
+                <span style="color: var(--text-muted);">pms window</span>
+            </div>
+            <div style="display: flex; gap: var(--space-sm); align-items: center;">
+                <div style="width: 14px; height: 14px; border-radius: 2px;
+                            background: var(--cycle-luteal-bg);
+                            border: 1px solid var(--border-subtle);"></div>
+                <span style="color: var(--text-muted);">luteal phase</span>
+            </div>
+        </div>
+
+        <div style="width: 1px; height: 16px; background: var(--border-subtle);"></div>
+
+        <div style="display: flex; gap: var(--space-md); align-items: center;">
+            <span style="font-size: 0.6rem; background: var(--badge-migraine-bg, #7f1d1d33);
+                         color: #fca5a5; border-radius: 3px; padding: 0 4px;">flare</span>
+            <span style="color: var(--text-muted);">flare day</span>
+        </div>
+        <div style="display: flex; gap: var(--space-sm); align-items: center;">
+            <span style="font-size: 0.6rem; background: var(--bg-elevated);
+                         color: var(--color-intervention); border-radius: 3px; padding: 0 4px;">Rx</span>
+            <span style="color: var(--text-muted);">medication</span>
+        </div>
+        <div style="display: flex; gap: var(--space-sm); align-items: center;">
+            <span style="font-size: 0.6rem; background: var(--bg-elevated);
+                         color: var(--color-intervention-supplement); border-radius: 3px; padding: 0 4px;">Rx</span>
+            <span style="color: var(--text-muted);">supplement</span>
+        </div>
+
+
+        <div style="width: 1px; height: 16px; background: var(--border-subtle);"></div>
+
+        <div style="display: flex; gap: var(--space-md); align-items: center;">
+            <div style="display: flex; gap: var(--space-sm); align-items: center;">
+                <div style="width: 14px; height: 4px; background: var(--cycle-bbt-dot); border-radius: 2px;"></div>
+                <span style="color: var(--text-muted);">bbt high (+0.2°+)</span>
+            </div>
+            <div style="display: flex; gap: var(--space-sm); align-items: center;">
+                <div style="width: 14px; height: 4px; background: var(--cycle-bbt-low); border-radius: 2px;"></div>
+                <span style="color: var(--text-muted);">bbt low</span>
+            </div>
+        </div>
+
+    </div>
+    <p style="font-size: 0.7rem; color: var(--text-muted); margin-top: var(--space-md); margin-bottom: 0;">
+        Phase bands use BBT-detected ovulation where available, otherwise date arithmetic.
+        Click any day to view or edit that entry.
+        BBT shown as delta from your configured baseline (colored border at cell bottom).
+    </p>
+</div>
+
+<!-- Summary stats -->
+<div class="card" style="margin-bottom: var(--space-lg);">
+    <div style="display: flex; gap: var(--space-xl); flex-wrap: wrap; align-items: flex-start;">
+        <div>
+            <div style="font-size: 0.75rem; color: var(--text-muted); margin-bottom: 2px;">avg cycle length</div>
+            <div style="font-size: 1.4rem; font-family: var(--font-mono); color: var(--text-primary);">
+                {{ avg_cycle }} days
+                {% if period_starts|length < 2 %}
+                <span style="font-size: 0.7rem; color: var(--text-muted); font-family: var(--font-body);">(default — log more cycles to refine)</span>
+                {% endif %}
+            </div>
+        </div>
+        {% if next_period %}
+        <div>
+            <div style="font-size: 0.75rem; color: var(--text-muted); margin-bottom: 2px;">next period predicted</div>
+            <div style="font-size: 1.4rem; font-family: var(--font-mono); color: var(--text-primary);">
+                {{ next_period.strftime('%b %-d') }}
+            </div>
+        </div>
+        {% if pms_start %}
+        <div>
+            <div style="font-size: 0.75rem; color: var(--text-muted); margin-bottom: 2px;">pms window</div>
+            <div style="font-size: 1rem; font-family: var(--font-mono); color: var(--text-muted);">
+                {{ pms_start.strftime('%b %-d') }} to {{ next_period.strftime('%b %-d') }}
+            </div>
+        </div>
+        {% endif %}
+        {% if ovulation %}
+        <div>
+            <div style="font-size: 0.75rem; color: var(--text-muted); margin-bottom: 2px;">
+                ovulation {{ ovulation_source }}
+            </div>
+            <div style="font-size: 1rem; font-family: var(--font-mono);
+                        color: {% if ovulation_source == 'detected' %}var(--cycle-bbt-dot){% else %}var(--text-muted){% endif %};">
+                {% if ovulation_source == 'predicted' %}~{% endif %}{{ ovulation.strftime('%b %-d') }}
+            </div>
+        </div>
+        {% endif %}
+        {% endif %}
+        <div style="margin-left: auto;">
+            <div style="font-size: 0.75rem; color: var(--text-muted); margin-bottom: 2px;">cycles recorded</div>
+            <div style="font-size: 1.4rem; font-family: var(--font-mono); color: var(--text-primary);">
+                {{ period_starts|length }}
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Calendar grid -->
+<div class="card">
+
+    <!-- Day-of-week headers -->
+    <div style="display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; margin-bottom: var(--space-sm);">
+        {% for day_name in ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'] %}
+        <div style="text-align: center; font-size: 0.7rem; color: var(--text-muted);
+                    font-weight: 600; padding: var(--space-xs) 0;">
+            {{ day_name }}
+        </div>
+        {% endfor %}
+    </div>
+
+    <!-- Calendar days -->
+    {% set first_weekday = cal.monthrange(year, month)[0] %}
+    {# monthrange returns 0=Monday; shift so 0=Sunday #}
+    {% set start_offset = (first_weekday + 1) % 7 %}
+    {% set days_in_month = cal.monthrange(year, month)[1] %}
+
+    <div style="display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px;">
+
+        {# Empty cells before the 1st #}
+        {% for _ in range(start_offset) %}
+        <div style="min-height: 80px;"></div>
+        {% endfor %}
+
+        {# Day cells #}
+        {% for day_num in range(1, days_in_month + 1) %}
+        {% set day_str = '%04d-%02d-%02d' | format(year, month, day_num) %}
+        {% set obs = month_data.get(day_str) %}
+        {% set flow = obs.period_flow if obs else None %}
+        {% set phase = phase_by_date.get(day_str) %}
+        {% set is_flare = obs.flare_occurred if obs else False %}
+        {% set bbt = obs.basal_temp_delta if obs else None %}
+        {% set intervention = intervention_dates.get(day_str) %}
+        {% set is_predicted_period = next_period and next_period.isoformat() == day_str %}
+
+        {# Cell background by phase #}
+        {% if is_predicted_period %}
+            {% set cell_bg = 'background: repeating-linear-gradient(45deg, var(--bg-surface), var(--bg-surface) 4px, var(--bg-elevated) 4px, var(--bg-elevated) 8px);' %}
+        {% elif phase == 'pms' %}
+            {% set cell_bg = 'background: var(--cycle-pms-bg);' %}
+        {% elif phase == 'luteal' %}
+            {% set cell_bg = 'background: var(--cycle-luteal-bg);' %}
+        {% else %}
+            {% set cell_bg = '' %}
+        {% endif %}
+
+        {# Flow dot color #}
+        {% if flow == 'heavy' %}
+            {% set flow_color = 'var(--cycle-flow-heavy)' %}
+        {% elif flow == 'medium' %}
+            {% set flow_color = 'var(--cycle-flow-medium)' %}
+        {% elif flow == 'light' %}
+            {% set flow_color = 'var(--cycle-flow-light)' %}
+        {% elif flow == 'spotting' %}
+            {% set flow_color = 'var(--cycle-flow-spotting)' %}
+        {% else %}
+            {% set flow_color = None %}
+        {% endif %}
+
+        {# BBT bottom heat bar — green for elevated (post-ovulation), blue for low (follicular) #}
+        {% if bbt is not none %}
+            {% if bbt >= 0.2 %}{% set bbt_border = 'var(--cycle-bbt-dot)' %}
+            {% elif bbt >= 0.1 %}{% set bbt_border = 'var(--cycle-bbt-line)' %}
+            {% elif bbt <= -0.1 %}{% set bbt_border = 'var(--cycle-bbt-low)' %}
+            {% else %}{% set bbt_border = none %}{% endif %}
+        {% else %}{% set bbt_border = none %}{% endif %}
+
+        <div class="cycle-cell" data-date="{{ day_str }}"
+             style="min-height: 80px; border-radius: var(--radius-sm);
+                    border: 1px solid var(--border-subtle);
+                    padding: var(--space-xs);
+                    display: flex; flex-direction: column;
+                    position: relative; cursor: pointer;
+                    {{ cell_bg }}
+                    {% if flow_color %}border-top: 3px solid {{ flow_color }};{% endif %}
+                    {% if bbt_border %}border-bottom: 3px solid {{ bbt_border }};{% endif %}">
+
+            {# Day number — links to daily entry #}
+            <a href="{{ url_for('daily_entry', date=day_str) }}"
+               style="font-size: 0.75rem; font-family: var(--font-mono);
+                      text-decoration: none;
+                      color: {% if day_str == today %}var(--color-accent){% else %}var(--text-muted){% endif %};
+                      font-weight: {% if day_str == today %}700{% else %}400{% endif %};">
+                {{ day_num }}
+            </a>
+
+            {# Flow label — tap to open picker #}
+            <div class="flow-tap" data-date="{{ day_str }}"
+                 style="font-size: 0.65rem; margin-top: 2px; font-weight: 600; min-height: 14px;
+                        color: {{ flow_color if flow_color else 'var(--text-muted)' }};">
+                {{ flow if flow else '+flow' }}
+            </div>
+
+            {# Flow picker overlay #}
+            <div class="flow-picker" data-date="{{ day_str }}"
+                 style="display:none; position:absolute; top:0; left:0; right:0;
+                        z-index:10; background: var(--bg-elevated);
+                        border: 1px solid var(--border-subtle);
+                        border-radius: var(--radius-sm); padding: 4px;">
+                <div style="display:flex; gap:2px; flex-wrap:wrap; justify-content:center;">
+                    <button data-flow="" class="flow-btn"
+                            style="font-size:0.6rem; padding:2px 5px; border:1px solid var(--border-subtle);
+                                   border-radius:3px; background:var(--bg-surface); color:var(--text-muted); cursor:pointer;">
+                        none</button>
+                    <button data-flow="spotting" class="flow-btn"
+                            style="font-size:0.6rem; padding:2px 5px; border:1px solid var(--cycle-flow-spotting);
+                                   border-radius:3px; background:var(--bg-surface); color:var(--cycle-flow-spotting); cursor:pointer;">
+                        spot</button>
+                    <button data-flow="light" class="flow-btn"
+                            style="font-size:0.6rem; padding:2px 5px; border:1px solid var(--cycle-flow-light);
+                                   border-radius:3px; background:var(--bg-surface); color:var(--cycle-flow-light); cursor:pointer;">
+                        light</button>
+                    <button data-flow="medium" class="flow-btn"
+                            style="font-size:0.6rem; padding:2px 5px; border:1px solid var(--cycle-flow-medium);
+                                   border-radius:3px; background:var(--bg-surface); color:var(--cycle-flow-medium); cursor:pointer;">
+                        med</button>
+                    <button data-flow="heavy" class="flow-btn"
+                            style="font-size:0.6rem; padding:2px 5px; border:1px solid var(--cycle-flow-heavy);
+                                   border-radius:3px; background:var(--bg-surface); color:var(--cycle-flow-heavy); cursor:pointer;">
+                        heavy</button>
+                </div>
+            </div>
+
+            {# Cramping indicator #}
+            {% if obs and obs.cramping and obs.cramping != 'none' %}
+            <div style="font-size: 0.6rem; color: var(--text-muted); margin-top: 1px;">
+                cramp: {{ obs.cramping }}
+            </div>
+            {% endif %}
+
+            {# BBT delta — color-coded to match bottom border #}
+            {% if bbt is not none and bbt != 0 %}
+            <div style="font-size: 0.6rem; color: {{ bbt_border if bbt_border else 'var(--text-muted)' }}; margin-top: auto;">
+                {{ '+' if bbt > 0 else '' }}{{ '%.1f' | format(bbt) }}°
+            </div>
+            {% endif %}
+
+            {# Markers row at bottom #}
+            <div style="display: flex; gap: 3px; margin-top: auto; flex-wrap: wrap;">
+                {% if is_flare %}
+                <span title="flare day"
+                      style="font-size: 0.6rem; background: var(--badge-migraine-bg, #7f1d1d33);
+                             color: #fca5a5; border-radius: 3px; padding: 0 3px;">
+                    flare
+                </span>
+                {% endif %}
+                {% if intervention %}
+                {% if intervention[2] == 'supplement' %}
+                    {% set rx_color = 'var(--color-intervention-supplement)' %}
+                {% elif intervention[1] == 'start' %}
+                    {% set rx_color = 'var(--color-intervention)' %}
+                {% else %}
+                    {% set rx_color = 'var(--text-muted)' %}
+                {% endif %}
+                <span title="{{ intervention[0] }} {% if intervention[1] == 'start' %}started{% else %}active{% endif %}"
+                      style="font-size: 0.6rem; background: var(--bg-elevated);
+                             color: {{ rx_color }};
+                             border-radius: 3px; padding: 0 3px;">
+                    Rx
+                </span>
+                {% endif %}
+                {% if is_predicted_period %}
+                <span style="font-size: 0.6rem; color: var(--text-muted); border-radius: 3px; padding: 0 3px;">
+                    predicted
+                </span>
+                {% endif %}
+            </div>
+        </div>
+        {% endfor %}
+
+    </div><!-- /grid -->
+</div><!-- /card -->
+
+<!-- BBT wave graph -->
+{% set has_bbt = bbt_points | selectattr(1) | list | length > 0 %}
+{% if has_bbt %}
+<div class="card" style="margin-top: var(--space-sm);">
+    <div style="font-size: 0.7rem; color: var(--text-muted); margin-bottom: var(--space-xs);">basal temperature delta (&deg;)</div>
+    <div style="position: relative;">
+        <svg width="100%" viewBox="0 0 700 56" preserveAspectRatio="none"
+             style="display: block; height: 56px; overflow: visible;">
+            {# Y labels #}
+            <text x="0" y="8" font-size="7" fill="var(--text-muted)" font-family="monospace">+1.0</text>
+            <text x="0" y="30" font-size="7" fill="var(--text-muted)" font-family="monospace">0</text>
+            <text x="0" y="52" font-size="7" fill="var(--text-muted)" font-family="monospace">-1.0</text>
+            {# Zero line #}
+            <line x1="18" y1="28" x2="700" y2="28"
+                  stroke="var(--border-subtle)" stroke-width="0.6" stroke-dasharray="3,3"/>
+            {# +0.5 and -0.5 guide lines #}
+            <line x1="18" y1="14" x2="700" y2="14"
+                  stroke="var(--border-subtle)" stroke-width="0.3"/>
+            <line x1="18" y1="42" x2="700" y2="42"
+                  stroke="var(--border-subtle)" stroke-width="0.3"/>
+            {# Data line: connect consecutive non-null points #}
+            {% set ns = namespace(prev_x=none, prev_y=none) %}
+            {% for day_num, bbt in bbt_points %}
+                {% if bbt is not none %}
+                    {% set x = (18 + (day_num - 0.5) / month_last_day * 682) | round(1) %}
+                    {% set y = (28 - bbt * 14) | round(1) %}
+                    {% if ns.prev_x is not none %}
+                        <line x1="{{ ns.prev_x }}" y1="{{ ns.prev_y }}"
+                              x2="{{ x }}" y2="{{ y }}"
+                              stroke="var(--cycle-bbt-line)" stroke-width="1.5"
+                              stroke-linecap="round"/>
+                    {% endif %}
+                    <circle cx="{{ x }}" cy="{{ y }}" r="2.2"
+                            fill="var(--cycle-bbt-dot)"/>
+                    {% set ns.prev_x = x %}
+                    {% set ns.prev_y = y %}
+                {% else %}
+                    {% set ns.prev_x = none %}
+                    {% set ns.prev_y = none %}
+                {% endif %}
+            {% endfor %}
+        </svg>
+    </div>
+</div>
+{% endif %}
+
+<!-- Patterns / correlation card -->
+{% set total_flares = flare_phase_counts.values()|sum %}
+{% if period_starts|length >= 3 %}
+<div class="card" style="margin-top: var(--space-lg);">
+    <div style="font-size: 0.75rem; color: var(--text-muted); margin-bottom: var(--space-sm);">patterns</div>
+
+    {% if total_flares > 0 %}
+    <div style="margin-bottom: var(--space-md);">
+        <div style="font-size: 0.7rem; color: var(--text-muted); margin-bottom: var(--space-xs);">
+            flare distribution by cycle phase ({{ total_flares }} total flares across {{ period_starts|length }} cycles)
+        </div>
+        <div style="display: flex; gap: var(--space-lg); flex-wrap: wrap;">
+            {% for phase_key, label in [('pms','pms'), ('luteal','luteal'), ('follicular','follicular'), ('period','period')] %}
+            {% set count = flare_phase_counts.get(phase_key, 0) %}
+            {% set days  = phase_day_counts.get(phase_key, 1) %}
+            <div>
+                <div style="font-size: 0.65rem; color: var(--text-muted);">{{ label }}</div>
+                <div style="font-size: 1.1rem; font-family: var(--font-mono); color: var(--text-primary);">
+                    {{ count }}
+                    <span style="font-size: 0.65rem; color: var(--text-muted);">
+                        / {{ phase_day_counts.get(phase_key, 0) }}d
+                        ({{ ((count / days * 100)|round(0)|int) }}%)
+                    </span>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+    {% else %}
+    <div style="font-size: 0.7rem; color: var(--text-muted); margin-bottom: var(--space-md);">
+        no flares recorded in this history window.
+    </div>
+    {% endif %}
+
+    {% if intervention_effects %}
+    <div style="border-top: 1px solid var(--border-subtle); padding-top: var(--space-sm);">
+        <div style="font-size: 0.7rem; color: var(--text-muted); margin-bottom: var(--space-xs);">intervention effects on cycle length</div>
+        {% for eff in intervention_effects %}
+        <div style="font-size: 0.75rem; color: var(--text-secondary); margin-bottom: 4px; font-family: var(--font-mono);">
+            {{ eff.drug }}
+            <span style="font-size: 0.65rem; color: var(--text-muted);">({{ eff.start }})</span>
+            <span style="color: var(--text-muted);">
+                {% if eff.before_avg %}{{ eff.before_avg }}d before{% endif %}
+                {% if eff.before_avg and eff.after_avg %} &#8594; {% endif %}
+                {% if eff.after_avg %}{{ eff.after_avg }}d after{% endif %}
+                {% if not eff.before_avg and not eff.after_avg %}insufficient cycle data{% endif %}
+            </span>
+        </div>
+        {% endfor %}
+    </div>
+    {% endif %}
+
+    <p style="font-size: 0.65rem; color: var(--text-muted); margin-top: var(--space-sm); margin-bottom: 0;">
+        Based on {{ period_starts|length }} cycles in the last 12 months.
+        Percentages are flares per day in each phase.
+    </p>
+</div>
+{% endif %}
+
+<!-- BC History -->
+<div class="card" style="margin-top: var(--space-lg);">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:var(--space-sm);">
+        <div style="font-size: 0.75rem; color: var(--text-muted);">contraceptive history</div>
+        <button class="btn btn-secondary" style="font-size:0.75rem; padding:2px 10px;"
+                onclick="document.getElementById('bc-add-form').style.display =
+                         document.getElementById('bc-add-form').style.display === 'none' ? 'block' : 'none'">
+            + add
+        </button>
+    </div>
+
+    {% if bc_history %}
+    <div style="margin-bottom: var(--space-md);">
+        {% for bc in bc_history | sort(attribute='start_date') %}
+        <div style="display:flex; align-items:baseline; gap:var(--space-sm); font-size:0.8rem;
+                    padding: 4px 0; border-bottom: 1px solid var(--border-subtle);">
+            <span style="font-family:var(--font-mono); color:var(--text-muted); white-space:nowrap; font-size:0.7rem;">
+                {{ bc.start_date }} — {{ bc.end_date or 'present' }}
+            </span>
+            <span style="color:var(--text-secondary); flex:1;">
+                {{ bc_type_labels.get(bc.bc_type, bc.bc_type) }}
+                {% if bc.name %}<span style="color:var(--text-muted);">({{ bc.name }})</span>{% endif %}
+                {% if bc.bc_type in bc_is_hormonal %}
+                <span style="font-size:0.65rem; background:rgba(155,114,207,0.2);
+                             color:#9b72cf; border-radius:3px; padding:0 4px; margin-left:4px;">hormonal</span>
+                {% endif %}
+            </span>
+            <form method="POST" action="{{ url_for('bc_delete', bc_id=bc.id) }}" style="display:inline; margin:0;">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button type="submit" style="background:none; border:none; color:var(--text-muted);
+                                             cursor:pointer; font-size:0.75rem; padding:0 4px;"
+                        title="delete">×</button>
+            </form>
+        </div>
+        {% endfor %}
+    </div>
+    {% else %}
+    <p style="font-size:0.75rem; color:var(--text-muted); margin:0 0 var(--space-md) 0;">
+        No contraceptive history recorded. Add a record to enable BC stratification in phase analytics.
+    </p>
+    {% endif %}
+
+    <!-- Add form (hidden by default) -->
+    <div id="bc-add-form" style="display:none; border-top:1px solid var(--border-subtle); padding-top:var(--space-md); margin-top:var(--space-sm);">
+        <form method="POST" action="{{ url_for('bc_add') }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <div style="display:flex; gap:var(--space-md); flex-wrap:wrap; margin-bottom:var(--space-sm);">
+                <div class="form-group" style="flex:2; min-width:160px; margin:0;">
+                    <label style="font-size:0.75rem;">type</label>
+                    <select name="bc_type" style="font-size:0.8rem;">
+                        {% for val, label in bc_type_labels.items() %}
+                        <option value="{{ val }}">{{ label }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="form-group" style="flex:1; min-width:120px; margin:0;">
+                    <label style="font-size:0.75rem;">brand / name (optional)</label>
+                    <input type="text" name="name" placeholder="e.g. Mirena" style="font-size:0.8rem;">
+                </div>
+            </div>
+            <div style="display:flex; gap:var(--space-md); flex-wrap:wrap; margin-bottom:var(--space-md);">
+                <div class="form-group" style="flex:1; min-width:130px; margin:0;">
+                    <label style="font-size:0.75rem;">start date</label>
+                    <input type="date" name="start_date" required style="font-size:0.8rem;">
+                </div>
+                <div class="form-group" style="flex:1; min-width:130px; margin:0;">
+                    <label style="font-size:0.75rem;">end date (blank if current)</label>
+                    <input type="date" name="end_date" style="font-size:0.8rem;">
+                </div>
+                <div class="form-group" style="flex:2; min-width:160px; margin:0;">
+                    <label style="font-size:0.75rem;">notes (optional)</label>
+                    <input type="text" name="notes" style="font-size:0.8rem;">
+                </div>
+            </div>
+            <button type="submit" class="btn btn-primary" style="font-size:0.8rem;">save</button>
+            <button type="button" class="btn btn-secondary" style="font-size:0.8rem; margin-left:var(--space-sm);"
+                    onclick="document.getElementById('bc-add-form').style.display='none'">cancel</button>
+        </form>
+    </div>
+</div>
+
+<!-- Phase Analytics -->
+{% if phase_analytics and phase_analytics.follicular.days > 0 %}
+<div class="card" style="margin-top: var(--space-lg);">
+    <div style="font-size: 0.75rem; color: var(--text-muted); margin-bottom: var(--space-sm);">phase analytics</div>
+    <p style="font-size: 0.75rem; color: var(--text-muted); margin: 0 0 var(--space-md) 0;">
+        Aggregated across all tracked history. Luteal includes PMS window.
+        <span style="font-family: var(--font-mono);">
+            period {{ phase_analytics.period.days }}d &nbsp;·&nbsp;
+            follicular {{ phase_analytics.follicular.days }}d &nbsp;·&nbsp;
+            luteal/PMS {{ phase_analytics.luteal.days }}d
+        </span>
+    </p>
+
+    <!-- BC stratification toggle -->
+    {% if show_bc_toggle %}
+    <div style="display:flex; gap:var(--space-sm); margin-bottom:var(--space-md); flex-wrap:wrap;">
+        <button class="chart-preset-btn active" id="bc-toggle-all"
+                onclick="setBCView('all')" style="font-size:0.75rem;">all data</button>
+        <button class="chart-preset-btn" id="bc-toggle-hormonal"
+                onclick="setBCView('hormonal')" style="font-size:0.75rem;">on hormonal BC</button>
+        <button class="chart-preset-btn" id="bc-toggle-none"
+                onclick="setBCView('none')" style="font-size:0.75rem;">off hormonal BC</button>
+    </div>
+    {% endif %}
+
+    <!-- Symptom frequency tables (three versions, JS toggles visibility) -->
+    {% macro sym_table(rows, table_id) %}
+    <div id="{{ table_id }}" style="overflow-x: auto; margin-bottom: var(--space-lg);">
+        <table style="width: 100%; border-collapse: collapse; font-size: 0.8rem;">
+            <thead>
+                <tr style="border-bottom: 1px solid var(--border-medium);">
+                    <th style="text-align: left; padding: 4px 8px; color: var(--text-muted); font-weight: normal; min-width: 120px;"></th>
+                    <th style="text-align: center; padding: 4px 8px; color: #c94040; font-weight: normal;">period</th>
+                    <th style="text-align: center; padding: 4px 8px; color: #4a90d9; font-weight: normal;">follicular</th>
+                    <th style="text-align: center; padding: 4px 8px; color: #9b72cf; font-weight: normal;">luteal / PMS</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for row in rows %}
+                {% if row.period > 0 or row.follicular > 0 or row.luteal > 0 %}
+                <tr style="border-bottom: 1px solid var(--border-subtle);">
+                    <td style="padding: 4px 8px; color: var(--text-secondary);">{{ row.label }}</td>
+                    <td style="text-align: center; padding: 4px 8px;">
+                        <span style="display:inline-block; padding:2px 6px; border-radius:3px;
+                                     background:rgba(201,64,64,{{ row.period / 100 * 0.7 }});
+                                     font-family:var(--font-mono); font-size:0.75rem;
+                                     color:{% if row.period >= 20 %}var(--text-primary){% else %}var(--text-muted){% endif %};">
+                            {{ row.period }}%
+                        </span>
+                    </td>
+                    <td style="text-align: center; padding: 4px 8px;">
+                        <span style="display:inline-block; padding:2px 6px; border-radius:3px;
+                                     background:rgba(74,144,217,{{ row.follicular / 100 * 0.7 }});
+                                     font-family:var(--font-mono); font-size:0.75rem;
+                                     color:{% if row.follicular >= 20 %}var(--text-primary){% else %}var(--text-muted){% endif %};">
+                            {{ row.follicular }}%
+                        </span>
+                    </td>
+                    <td style="text-align: center; padding: 4px 8px;">
+                        <span style="display:inline-block; padding:2px 6px; border-radius:3px;
+                                     background:rgba(155,114,207,{{ row.luteal / 100 * 0.7 }});
+                                     font-family:var(--font-mono); font-size:0.75rem;
+                                     color:{% if row.luteal >= 20 %}var(--text-primary){% else %}var(--text-muted){% endif %};">
+                            {{ row.luteal }}%
+                        </span>
+                    </td>
+                </tr>
+                {% endif %}
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% endmacro %}
+
+    <div style="font-size: 0.7rem; color: var(--text-muted); margin-bottom: var(--space-xs);">symptom frequency by phase</div>
+    {{ sym_table(symptom_rows, 'sym-table-all') }}
+    {% if show_bc_toggle %}
+    {{ sym_table(symptom_rows_hormonal, 'sym-table-hormonal') }}
+    {{ sym_table(symptom_rows_no_bc, 'sym-table-none') }}
+    {% endif %}
+
+    <!-- Biometrics by phase (Chart.js grouped bar) -->
+    {% set has_biometrics = phase_analytics.follicular.hrv is not none
+                         or phase_analytics.follicular.pain is not none
+                         or phase_analytics.follicular.fatigue is not none %}
+    {% if has_biometrics %}
+    <div style="font-size: 0.7rem; color: var(--text-muted); margin-bottom: var(--space-xs);">biometrics by phase (mean)</div>
+    <div style="max-height: 220px; margin-bottom: var(--space-lg);">
+        <canvas id="phase-biometrics-chart"></canvas>
+    </div>
+    {% endif %}
+
+    <!-- Cycle length trend -->
+    {% if cycle_length_series | length >= 3 %}
+    <div style="font-size: 0.7rem; color: var(--text-muted); margin-bottom: var(--space-xs);">cycle length over time</div>
+    {% if bc_history %}
+    <div style="display:flex; gap:var(--space-md); font-size:0.7rem; color:var(--text-muted); margin-bottom:var(--space-xs);">
+        <span>&#9679; <span style="color:#d4b84a;">hormonal BC</span></span>
+        <span>&#9679; <span style="color:#9b72cf;">no hormonal BC</span></span>
+    </div>
+    {% endif %}
+    <div style="max-height: 180px;">
+        <canvas id="cycle-length-chart"></canvas>
+    </div>
+    {% endif %}
+</div>
+
+<script>
+(function() {
+    const PA_ALL      = {{ phase_analytics | tojson }};
+    const PA_HORMONAL = {{ phase_analytics_hormonal | tojson }};
+    const PA_NO_BC    = {{ phase_analytics_no_bc | tojson }};
+    const phases      = ['period', 'follicular', 'luteal'];
+    const phaseLabels = ['period', 'follicular', 'luteal / PMS'];
+    const phaseColors = { period: '#c94040', follicular: '#4a90d9', luteal: '#9b72cf' };
+    const gridColor   = 'rgba(255,255,255,0.06)';
+    const tickColor   = '#9994a8';
+
+    // Biometrics chart
+    const bioCtx = document.getElementById('phase-biometrics-chart');
+    let bioChart = null;
+    if (bioCtx) {
+        function bioDatasets(pa) {
+            return phases.map((p, i) => ({
+                label: phaseLabels[i],
+                data: [pa[p].hrv, pa[p].pain, pa[p].fatigue],
+                backgroundColor: phaseColors[p] + 'bb',
+                borderColor:     phaseColors[p],
+                borderWidth: 1,
+            }));
+        }
+        bioChart = new Chart(bioCtx, {
+            type: 'bar',
+            data: {
+                labels: ['HRV (ms)', 'Pain (0–10)', 'Fatigue (0–10)'],
+                datasets: bioDatasets(PA_ALL),
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    y: { beginAtZero: true,
+                         grid: { color: gridColor },
+                         ticks: { color: tickColor } },
+                    x: { grid: { display: false },
+                         ticks: { color: tickColor } }
+                },
+                plugins: { legend: { labels: { color: tickColor, boxWidth: 12, padding: 12 } } }
+            }
+        });
+    }
+
+    // Cycle length trend
+    const clCtx = document.getElementById('cycle-length-chart');
+    {% if cycle_length_series | length >= 3 %}
+    if (clCtx) {
+        const CL = {{ cycle_length_series | tojson }};
+        const avg = Math.round(CL.reduce((s, c) => s + c.length, 0) / CL.length);
+        const ptColor = CL.map(c => c.is_hormonal ? '#9b72cf' : '#d4b84a');
+        new Chart(clCtx, {
+            type: 'line',
+            data: {
+                labels: CL.map(c => c.date),
+                datasets: [
+                    {
+                        label: 'cycle length (days)',
+                        data: CL.map(c => c.length),
+                        borderColor: 'rgba(212,184,74,0.5)',
+                        backgroundColor: 'rgba(212,184,74,0.08)',
+                        pointBackgroundColor: ptColor,
+                        pointBorderColor: ptColor,
+                        fill: true,
+                        tension: 0.3,
+                        pointRadius: 5,
+                    },
+                    {
+                        label: `avg ${avg}d`,
+                        data: CL.map(() => avg),
+                        borderColor: 'rgba(153,148,168,0.4)',
+                        borderWidth: 1,
+                        borderDash: [4, 3],
+                        pointRadius: 0,
+                        fill: false,
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    y: { min: 18, max: 45,
+                         grid: { color: gridColor },
+                         ticks: { color: tickColor, stepSize: 7 } },
+                    x: { grid: { display: false },
+                         ticks: { color: tickColor, maxTicksLimit: 8, maxRotation: 0 } }
+                },
+                plugins: {
+                    legend: { display: false },
+                    tooltip: {
+                        callbacks: {
+                            label: ctx => ctx.datasetIndex === 1
+                                ? `average: ${avg} days`
+                                : `${ctx.parsed.y} days`
+                        }
+                    }
+                }
+            }
+        });
+    }
+    {% endif %}
+
+    // BC stratification toggle
+    {% if show_bc_toggle %}
+    const symTables = {
+        all:      document.getElementById('sym-table-all'),
+        hormonal: document.getElementById('sym-table-hormonal'),
+        none:     document.getElementById('sym-table-none'),
+    };
+    const toggleBtns = {
+        all:      document.getElementById('bc-toggle-all'),
+        hormonal: document.getElementById('bc-toggle-hormonal'),
+        none:     document.getElementById('bc-toggle-none'),
+    };
+    const paMap = { all: PA_ALL, hormonal: PA_HORMONAL, none: PA_NO_BC };
+
+    // Hide hormonal and none tables on load
+    symTables.hormonal.style.display = 'none';
+    symTables.none.style.display = 'none';
+
+    window.setBCView = function(view) {
+        Object.keys(symTables).forEach(k => {
+            symTables[k].style.display = k === view ? '' : 'none';
+        });
+        Object.keys(toggleBtns).forEach(k => {
+            toggleBtns[k].classList.toggle('active', k === view);
+        });
+        if (bioChart) {
+            bioChart.data.datasets = phases.map((p, i) => ({
+                label: phaseLabels[i],
+                data: [paMap[view][p].hrv, paMap[view][p].pain, paMap[view][p].fatigue],
+                backgroundColor: phaseColors[p] + 'bb',
+                borderColor:     phaseColors[p],
+                borderWidth: 1,
+            }));
+            bioChart.update();
+        }
+    };
+    {% endif %}
+})();
+</script>
+{% endif %}
+
+<script>
+/* Flow picker for quick-logging period flow on calendar cells */
+(function() {
+    const CSRF = '{{ csrf_token() }}';
+    const FLOW_COLORS = {
+        'heavy':    'var(--cycle-flow-heavy)',
+        'medium':   'var(--cycle-flow-medium)',
+        'light':    'var(--cycle-flow-light)',
+        'spotting': 'var(--cycle-flow-spotting)',
+    };
+
+    function hideAllPickers() {
+        document.querySelectorAll('.flow-picker').forEach(p => p.style.display = 'none');
+    }
+
+    /* Tap on flow label → show picker */
+    document.querySelectorAll('.flow-tap').forEach(tap => {
+        tap.addEventListener('click', function(e) {
+            e.stopPropagation();
+            e.preventDefault();
+            const dt = this.dataset.date;
+            hideAllPickers();
+            const picker = document.querySelector('.flow-picker[data-date="'+dt+'"]');
+            if (picker) picker.style.display = 'block';
+        });
+    });
+
+    /* Picker button → save flow */
+    document.querySelectorAll('.flow-btn').forEach(btn => {
+        btn.addEventListener('click', function(e) {
+            e.stopPropagation();
+            e.preventDefault();
+            const picker = this.closest('.flow-picker');
+            const dt = picker.dataset.date;
+            const flow = this.dataset.flow;
+
+            fetch('/cycle/flow', {
+                method: 'POST',
+                headers: {'Content-Type':'application/json', 'X-CSRFToken': CSRF},
+                body: JSON.stringify({date: dt, flow_level: flow})
+            }).then(r => r.json()).then(data => {
+                if (!data.ok) return;
+                const cell = document.querySelector('.cycle-cell[data-date="'+dt+'"]');
+                const label = cell.querySelector('.flow-tap');
+                if (flow && FLOW_COLORS[flow]) {
+                    label.textContent = flow;
+                    label.style.color = FLOW_COLORS[flow];
+                    cell.style.borderTop = '3px solid ' + FLOW_COLORS[flow];
+                } else {
+                    label.textContent = '+flow';
+                    label.style.color = 'var(--text-muted)';
+                    cell.style.borderTop = '1px solid var(--border-subtle)';
+                }
+                hideAllPickers();
+            }).catch(err => console.error('flow save failed:', err));
+        });
+    });
+
+    /* Click outside → close pickers */
+    document.addEventListener('click', function(e) {
+        if (!e.target.closest('.flow-picker') && !e.target.closest('.flow-tap')) {
+            hideAllPickers();
+        }
+    });
+})();
+</script>
+{% endblock %}

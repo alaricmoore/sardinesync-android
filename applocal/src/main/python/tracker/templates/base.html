@@ -1,0 +1,1090 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+    <meta name="csrf-token" content="{{ csrf_token() }}">
+    <title>{% block title %}sardinetracker{% endblock %}</title>
+
+    <link rel="icon" type="image/png" href="/favicon/favicon-96x96.png" sizes="96x96" />
+    <link rel="icon" type="image/svg+xml" href="/favicon/favicon.svg" />
+    <link rel="shortcut icon" href="/favicon/favicon.ico" />
+    <link rel="apple-touch-icon" sizes="180x180" href="/favicon/apple-touch-icon.png" />
+    <meta name="apple-mobile-web-app-title" content="Sardines" />
+    <link rel="manifest" href="/favicon/site.webmanifest" />
+
+    <!-- Serif typography from Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;600;700&family=Source+Serif+4:ital,opsz,wght@0,8..60,300;0,8..60,400;0,8..60,600;1,8..60,300;1,8..60,400&family=IBM+Plex+Mono:wght@300;400&display=swap" rel="stylesheet">
+
+    <style>
+        /* ================================================
+           Design tokens
+           ================================================ */
+        :root {
+            /* Background layers */
+            --bg-base:        #0e0e12;
+            --bg-surface:     #16161d;
+            --bg-elevated:    #1e1e28;
+            --bg-input:       #23232f;
+
+            /* Borders */
+            --border-subtle:  #2a2a38;
+            --border-medium:  #38384a;
+
+            /* Text */
+            --text-primary:   #f1efeaff;
+            --text-secondary: #b8b3cbff;
+            --text-muted:     #8987a3ff;
+            --text-inverse:   #0e0e12;
+
+            /* Symptom category colors */
+            --color-neuro:        #4a90d9;   /* cool blue    - neurological  */
+            --color-muscle:       #d4a054;   /* warm amber   - musculature   */
+            --color-migraine:     #c94040;   /* deep red     - migraine      */
+            --color-cognitive:    #9b72cf;   /* soft purple  - cognitive     */
+            --color-derm:         #d4784a;   /* muted orange - dermatological*/
+            --color-pulmonary:    #4ab8b8;   /* teal         - pulmonary     */
+            --color-gastro:       #a8d46f;   /* soft green   - gastrointestinal*/
+            --color-mucosal:      #d4c4a0;   /* muted beige  - mucosal       */ 
+            --color-uv:           #d4b84a;   /* yellow-gold  - UV index      */
+            --color-rheum:        #e85d9e;   /* pink         - rheumatic     */
+            --color-flare:        #ffffff;   /* white        - flare days    */
+            --color-fatigue:      rgba(118, 186, 141, 1);   /* greenish    - fatigue days  */
+            --color-pain:         rgba(159, 24, 217, 1);   /* electric purple    - pain days     */
+
+            /* Intervention colors - can be used for medications, lifestyle changes, etc. */
+            --color-intervention:           #4ab8b8;  /* teal - primary intervention */
+            --color-intervention-secondary: #9b72cf;  /* purple - secondary interventions */
+            --color-intervention-supplement: #e0943a; /* orange - supplement interventions */
+
+            /* Semantic colors */
+            --color-success:  #4a9e6e;
+            --color-warning:  #d4a054;
+            --color-danger:   #c94040;
+            --color-accent:   #7a8de0;
+
+            /* Typography */
+            --font-display:  'Playfair Display', 'Times New Roman', Georgia, serif;
+            --font-body:     'Source Serif 4', 'Times New Roman', Georgia, serif;
+            --font-mono:     'IBM Plex Mono', 'Courier New', monospace;
+
+            /* Spacing */
+            --space-xs:  0.25rem;
+            --space-sm:  0.5rem;
+            --space-md:  1rem;
+            --space-lg:  1.5rem;
+            --space-xl:  2rem;
+            --space-2xl: 3rem;
+
+            /* Radius */
+            --radius-sm: 4px;
+            --radius-md: 8px;
+            --radius-lg: 12px;
+
+            /* Cycle tracker */
+            --cycle-flow-heavy:    #be185d;
+            --cycle-flow-medium:   #ec4899;
+            --cycle-flow-light:    #f472b6;
+            --cycle-flow-spotting: #c084fc;
+            --cycle-pms-bg:        rgba(176, 135, 246, 0.23);
+            --cycle-luteal-bg:     rgba(114, 155, 218, 0.25);
+            --cycle-bbt-line:      rgba(39, 239, 246, 0.88);
+            --cycle-bbt-dot:       rgba(183, 196, 83, 0.45);
+            --cycle-bbt-low:       rgba(164, 100, 220, 0.3);
+        }
+
+        /* Light theme */
+        [data-theme="light"] {
+            /* Background layers */
+            --bg-base:        #f5f5f0;
+            --bg-surface:     #ffffff;
+            --bg-elevated:    #fafaf8;
+            --bg-input:       #ffffff;
+
+            /* Borders */
+            --border-subtle:  #e0e0d8;
+            --border-medium:  #c8c8c0;
+
+            /* Text */
+            --text-primary:   #1a1a1a;
+            --text-secondary: #5a5a60;
+            --text-muted:     #9090a0;
+            --text-inverse:   #e4dcdcff;
+
+            /* Symptom category colors - stay mostly the same */
+            --color-neuro:        #4a90d9;
+            --color-muscle:       #bd904cff;
+            --color-migraine:     #c94040;
+            --color-cognitive:    #8b66bcff;
+            --color-derm:         #be6b42ff;
+            --color-pulmonary:    #4ab8b8;
+            --color-gastro:       #a8d46f;   
+            --color-mucosal:      #d4c4a0; 
+            --color-uv:           #c4ab44ff;
+            --color-rheum:        #e85d9e;
+            --color-flare:        #1a1a1aff;   /* dark for light theme */
+            --color-fatigue:      rgba(99, 155, 118, 1);   /* greenish    - fatigue days  */
+            --color-pain:         rgba(159, 24, 217, 1);   /* electric purple    - pain days     */
+
+            --color-intervention: #398f8fff;  /* teal - primary intervention */
+            --color-intervention-secondary: #9b72cf;  /* purple - secondary interventions */
+            --color-intervention-supplement: #c97e2e; /* orange - supplement interventions */
+
+            /* Semantic colors */
+            --color-success:  #4a9e6e;
+            --color-warning:  #d99d43ff;
+            --color-danger:   #ce3b3bff;
+            --color-accent:   #7a8de0;
+
+            /* Cycle tracker */
+            --cycle-flow-heavy:    #be185d;
+            --cycle-flow-medium:   #ec4899;
+            --cycle-flow-light:    #f472b6;
+            --cycle-flow-spotting: #c084fc;
+            --cycle-pms-bg:        rgba(149, 99, 236, 0.18);
+            --cycle-luteal-bg:     rgba(24, 123, 138, 0.6);
+            --cycle-bbt-line:      rgba(16, 181, 175, 0.57);
+            --cycle-bbt-dot:       rgba(74, 158, 110, 0.85);
+            --cycle-bbt-low:       rgba(100, 150, 220, 0.43);
+        }
+
+
+        /* ================================================
+           Reset and base
+           ================================================ */
+        *, *::before, *::after {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        html {
+            font-size: 16px;
+            -webkit-text-size-adjust: 100%;
+        }
+
+        body {
+            font-family: var(--font-body);
+            font-weight: 300;
+            font-size: 1rem;
+            line-height: 1.6;
+            color: var(--text-primary);
+            background-color: var(--bg-base);
+            min-height: 100vh;
+        }
+
+        /* ================================================
+           Typography
+           ================================================ */
+        h1, h2, h3, h4 {
+            font-family: var(--font-display);
+            font-weight: 600;
+            line-height: 1.25;
+            color: var(--text-primary);
+        }
+
+        h1 { font-size: clamp(1.5rem, 4vw, 2rem); }
+        h2 { font-size: clamp(1.2rem, 3vw, 1.5rem); }
+        h3 { font-size: 1.1rem; }
+        h4 { font-size: 1rem; }
+
+        p { margin-bottom: var(--space-md); }
+        p:last-child { margin-bottom: 0; }
+
+        a {
+            color: var(--color-accent);
+            text-decoration: none;
+        }
+        a:hover { text-decoration: underline; }
+
+        code, .mono {
+            font-family: var(--font-mono);
+            font-size: 0.875rem;
+            color: var(--text-secondary);
+        }
+
+        /* ================================================
+           Layout
+           ================================================ */
+        .app-wrapper {
+            display: flex;
+            flex-direction: column;
+            min-height: 100vh;
+        }
+
+        .app-header {
+            background: var(--bg-surface);
+            border-bottom: 1px solid var(--border-subtle);
+            padding: var(--space-md) var(--space-lg);
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+
+        .theme-option:hover {
+            opacity: 0.8;
+        }
+
+        .header-inner {
+            max-width: 1200px;
+            margin: 0 auto;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: var(--space-md);
+        }
+
+        .app-wordmark {
+            font-family: var(--font-display);
+            font-size: 1.1rem;
+            font-weight: 700;
+            color: var(--text-primary);
+            letter-spacing: 0.02em;
+        }
+
+        .app-wordmark span {
+            color: var(--color-accent);
+        }
+
+        /* Mobile nav */
+        .nav-links {
+            display: flex;
+            gap: var(--space-sm);
+            list-style: none;
+            flex-wrap: wrap;
+            align-items: center;
+        }
+
+        .nav-links a {
+            font-size: 0.875rem;
+            color: var(--text-secondary);
+            padding: var(--space-xs) var(--space-sm);
+            border-radius: var(--radius-sm);
+            transition: color 0.15s, background 0.15s;
+        }
+
+        .nav-links a:hover,
+        .nav-links a.active {
+            color: var(--text-primary);
+            background: var(--bg-elevated);
+            text-decoration: none;
+        }
+
+        .app-main {
+            flex: 1;
+            padding: var(--space-lg);
+            max-width: 1200px;
+            margin: 0 auto;
+            width: 100%;
+        }
+
+        .page-header {
+            margin-bottom: var(--space-xl);
+            padding-bottom: var(--space-md);
+            border-bottom: 1px solid var(--border-subtle);
+        }
+
+        .page-header h1 {
+            margin-bottom: var(--space-xs);
+        }
+
+        .page-subtitle {
+            color: var(--text-secondary);
+            font-size: 0.9rem;
+            font-style: italic;
+        }
+
+        /* ================================================
+           Cards and surfaces
+           ================================================ */
+        .card {
+            background: var(--bg-surface);
+            border: 1px solid var(--border-subtle);
+            border-radius: var(--radius-md);
+            padding: var(--space-lg);
+            margin-bottom: var(--space-lg);
+        }
+
+        .card-title {
+            font-family: var(--font-display);
+            font-size: 1rem;
+            font-weight: 600;
+            margin-bottom: var(--space-md);
+            color: var(--text-primary);
+        }
+
+        /* ================================================
+           Forms
+           ================================================ */
+        .form-group {
+            margin-bottom: var(--space-lg);
+        }
+
+        label {
+            display: block;
+            font-size: 0.875rem;
+            color: var(--text-secondary);
+            margin-bottom: var(--space-xs);
+            font-weight: 400;
+        }
+
+        input[type="text"],
+        input[type="number"],
+        input[type="date"],
+        input[type="search"],
+        textarea,
+        select {
+            width: 100%;
+            background: var(--bg-input);
+            border: 1px solid var(--border-medium);
+            border-radius: var(--radius-sm);
+            color: var(--text-primary);
+            font-family: var(--font-body);
+            font-size: 1rem;
+            padding: var(--space-sm) var(--space-md);
+            transition: border-color 0.15s;
+            -webkit-appearance: none;
+        }
+
+        input:focus,
+        textarea:focus,
+        select:focus {
+            outline: none;
+            border-color: var(--color-accent);
+        }
+
+        textarea {
+            resize: vertical;
+            min-height: 80px;
+        }
+
+        /* Range sliders */
+        input[type="range"] {
+            width: 100%;
+            height: 6px;
+            background: var(--bg-elevated);
+            border-radius: 3px;
+            border: none;
+            padding: 0;
+            cursor: pointer;
+            accent-color: var(--color-accent);
+        }
+
+        .range-row {
+            display: flex;
+            align-items: center;
+            gap: var(--space-md);
+        }
+
+        .range-value {
+            font-family: var(--font-mono);
+            font-size: 1.1rem;
+            min-width: 2.5rem;
+            text-align: right;
+            color: var(--text-primary);
+        }
+
+        /* Toggle switches for symptom flags */
+        .toggle-group {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+            gap: var(--space-sm);
+            margin-bottom: var(--space-md);
+        }
+
+        .toggle-item {
+            position: relative;
+        }
+
+        .toggle-item input[type="checkbox"] {
+            position: absolute;
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+
+        .toggle-label {
+            display: flex;
+            align-items: center;
+            gap: var(--space-sm);
+            padding: var(--space-sm) var(--space-md);
+            border: 1px solid var(--border-medium);
+            border-radius: var(--radius-md);
+            border-color: var(--border-medium);
+            cursor: pointer;
+            font-size: 0.875rem;
+            color: var(--text-secondary);
+            background: var(--bg-input);
+            transition: all 0.15s;
+            user-select: none;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        .toggle-label:active {
+            transform: scale(0.97);
+        }
+
+        /* Checked state per symptom category */
+        .toggle-item.neuro input:checked ~ .toggle-label {
+            background: color-mix(in srgb, var(--color-neuro) 15%, var(--bg-surface));
+            border-color: var(--color-neuro);
+            color: var(--color-neuro);
+        }
+        .toggle-item.muscle input:checked ~ .toggle-label {
+            background: color-mix(in srgb, var(--color-muscle) 15%, var(--bg-surface));
+            border-color: var(--color-muscle);
+            color: var(--color-muscle);
+        }
+        .toggle-item.migraine input:checked ~ .toggle-label {
+            background: color-mix(in srgb, var(--color-migraine) 15%, var(--bg-surface));
+            border-color: var(--color-migraine);
+            color: var(--color-migraine);
+        }
+        .toggle-item.cognitive input:checked ~ .toggle-label {
+            background: color-mix(in srgb, var(--color-cognitive) 15%, var(--bg-surface));
+            border-color: var(--color-cognitive);
+            color: var(--color-cognitive);
+        }
+
+        .toggle-item.pulmonary input:checked ~ .toggle-label {
+            background: color-mix(in srgb, var(--color-pulmonary) 15%, var(--bg-surface));
+            border-color: var(--color-pulmonary);
+            color: var(--color-pulmonary);
+        }
+        .toggle-item.gastro input:checked ~ .toggle-label {
+            background: color-mix(in srgb, var(--color-gastro) 15%, var(--bg-surface));
+            border-color: var(--color-gastro);
+            color: var(--color-gastro);
+        }
+        .toggle-item.mucosal input:checked ~ .toggle-label {
+            background: color-mix(in srgb, var(--color-mucosal) 15%, var(--bg-surface));
+            border-color: var(--color-mucosal);
+            color: var(--color-mucosal);
+        }
+        .toggle-item.derm input:checked ~ .toggle-label {
+            background: color-mix(in srgb, var(--color-derm) 15%, var(--bg-surface));
+            border-color: var(--color-derm);
+            color: var(--color-derm);
+        }
+        .toggle-item.rheum input:checked ~ .toggle-label {
+            background: color-mix(in srgb, var(--color-rheum) 15%, var(--bg-surface));
+            border-color: var(--color-rheum);
+            color: var(--color-rheum);
+        }
+
+        /* Expandable note fields */
+        .notes-expand {
+            display: none;
+            margin-top: var(--space-sm);
+            animation: slideDown 0.15s ease;
+        }
+
+        .notes-expand.visible {
+            display: block;
+        }
+
+        @keyframes slideDown {
+            from { opacity: 0; transform: translateY(-4px); }
+            to   { opacity: 1; transform: translateY(0); }
+        }
+
+        /* ================================================
+           Buttons
+           ================================================ */
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: var(--space-sm);
+            padding: var(--space-sm) var(--space-lg);
+            border-radius: var(--radius-md);
+            font-family: var(--font-body);
+            font-size: 1rem;
+            font-weight: 400;
+            cursor: pointer;
+            border: 1px solid transparent;
+            transition: all 0.15s;
+            -webkit-tap-highlight-color: transparent;
+            text-decoration: none;
+        }
+
+        .btn-primary {
+            background: var(--color-accent);
+            color: var(--text-inverse);
+            border-color: var(--color-accent);
+        }
+
+        .btn-primary:hover {
+            filter: brightness(1.1);
+            text-decoration: none;
+            color: var(--text-inverse);
+        }
+
+        .btn-secondary {
+            background: transparent;
+            color: var(--text-secondary);
+            border-color: var(--border-medium);
+        }
+
+        .btn-secondary:hover {
+            background: var(--bg-elevated);
+            color: var(--text-primary);
+            text-decoration: none;
+        }
+
+        .btn-full {
+            width: 100%;
+            padding: var(--space-md);
+            font-size: 1.1rem;
+        }
+
+        /* ================================================
+           Symptom category badges
+           ================================================ */
+        .badge {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 20px;
+            font-size: 0.75rem;
+            font-family: var(--font-mono);
+            font-weight: 400;
+        }
+
+        .badge-neuro       { background: color-mix(in srgb, var(--color-neuro) 20%, transparent);
+                             color: var(--color-neuro); }
+        .badge-muscle      { background: color-mix(in srgb, var(--color-muscle) 20%, transparent);
+                             color: var(--color-muscle); }
+        .badge-migraine    { background: color-mix(in srgb, var(--color-migraine) 20%, transparent);
+                             color: var(--color-migraine); }
+        .badge-cognitive   { background: color-mix(in srgb, var(--color-cognitive) 20%, transparent);
+                             color: var(--color-cognitive); }
+        .badge-derm        { background: color-mix(in srgb, var(--color-derm) 20%, transparent);
+                             color: var(--color-derm); }
+        .badge-gastro      { background: color-mix(in srgb, var(--color-gastro) 20%, transparent);
+                             color: var(--color-gastro); }
+        .badge-pulmonary   { background: color-mix(in srgb, var(--color-pulmonary) 20%, transparent);
+                             color: var(--color-pulmonary); }
+        .badge-rheum       { background: color-mix(in srgb, var(--color-rheum) 20%, transparent);
+                             color: var(--color-rheum); }
+        .badge-mucosal     { background: color-mix(in srgb, var(--color-mucosal) 20%, transparent);
+                             color: var(--color-mucosal); }
+        .badge-uv          { background: color-mix(in srgb, var(--color-uv) 20%, transparent);
+                             color: var(--color-uv); }
+
+
+        /* ================================================
+           UV display strip
+           ================================================ */
+        .uv-strip {
+            display: flex;
+            gap: var(--space-md);
+            background: var(--bg-elevated);
+            border: 1px solid var(--border-subtle);
+            border-radius: var(--radius-md);
+            padding: var(--space-md);
+            margin-bottom: var(--space-lg);
+        }
+
+        .uv-value {
+            flex: 1;
+            text-align: center;
+        }
+
+        .uv-value .label {
+            font-size: 0.75rem;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            display: block;
+            margin-bottom: var(--space-xs);
+        }
+
+        .uv-value .number {
+            font-family: var(--font-mono);
+            font-size: 1.4rem;
+            color: var(--color-uv);
+        }
+
+        /* ================================================
+           Tables
+           ================================================ */
+        .data-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.875rem;
+        }
+
+        .data-table th {
+            text-align: left;
+            padding: var(--space-sm) var(--space-md);
+            border-bottom: 1px solid var(--border-medium);
+            color: var(--text-muted);
+            font-weight: 400;
+            font-size: 0.75rem;
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+        }
+
+        .data-table td {
+            padding: var(--space-sm) var(--space-md);
+            border-bottom: 1px solid var(--border-subtle);
+            color: var(--text-secondary);
+            vertical-align: top;
+        }
+
+        .data-table tr:last-child td {
+            border-bottom: none;
+        }
+
+        .data-table .mono {
+            font-family: var(--font-mono);
+            font-size: 0.875rem;
+        }
+
+        /* ================================================
+           Empty states
+           ================================================ */
+        .empty-state {
+            text-align: center;
+            padding: var(--space-2xl) var(--space-lg);
+            color: var(--text-muted);
+            font-style: italic;
+        }
+
+        /* ================================================
+           Flash messages
+           ================================================ */
+        .flash {
+            padding: var(--space-md);
+            border-radius: var(--radius-md);
+            margin-bottom: var(--space-lg);
+            font-size: 0.9rem;
+        }
+
+        .flash-success {
+            background: color-mix(in srgb, var(--color-success) 15%, var(--bg-surface));
+            border: 1px solid var(--color-success);
+            color: var(--color-success);
+        }
+
+        .flash-error {
+            background: color-mix(in srgb, var(--color-danger) 15%, var(--bg-surface));
+            border: 1px solid var(--color-danger);
+            color: var(--color-danger);
+        }
+
+        /* ================================================
+           Mobile adjustments
+           ================================================ */
+        @media (max-width: 600px) {
+            .app-main {
+                padding: var(--space-md);
+            }
+
+            .header-inner {
+                flex-direction: column;
+                align-items: flex-start;
+                gap: var(--space-sm);
+            }
+
+            .nav-links {
+                gap: var(--space-sm);
+            }
+
+            .nav-links a {
+                font-size: 0.8rem;
+                padding: var(--space-xs);
+            }
+
+            .toggle-group {
+                grid-template-columns: repeat(2, 1fr);
+            }
+
+            .uv-strip {
+                gap: var(--space-sm);
+            }
+        }
+
+        /* ================================================
+           Chart containers
+           ================================================ */
+        .chart-container {
+            position: relative;
+            background: var(--bg-surface);
+            border: 1px solid var(--border-subtle);
+            border-radius: var(--radius-md);
+            padding: var(--space-lg);
+            margin-bottom: var(--space-lg);
+        }
+
+        .chart-title {
+            font-family: var(--font-display);
+            font-size: 0.9rem;
+            color: var(--text-secondary);
+            margin-bottom: var(--space-md);
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+        }
+
+        /* ================================================
+           Section dividers
+           ================================================ */
+        .section {
+            margin-bottom: var(--space-2xl);
+        }
+
+        .section-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: var(--space-lg);
+            padding-bottom: var(--space-sm);
+            border-bottom: 1px solid var(--border-subtle);
+        }
+
+        .section-title {
+            font-family: var(--font-display);
+            font-size: 1.1rem;
+        }
+
+        /* ================================================
+           Mobile bottom nav
+           ================================================ */
+        @media (max-width: 600px) {
+            .app-header { display: none; }
+            body { padding-bottom: 70px; }
+
+            .mobile-nav {
+                position: fixed;
+                bottom: 0;
+                left: 0;
+                right: 0;
+                height: 60px;
+                background: var(--bg-elevated);
+                border-top: 1px solid var(--border-subtle);
+                display: flex;
+                justify-content: space-around;
+                align-items: center;
+                z-index: 1000;
+                padding-bottom: env(safe-area-inset-bottom);
+                transition: height 200ms ease;
+            }
+
+            .mobile-nav.mobile-nav--collapsed {
+                height: 42px;
+            }
+
+            .mobile-nav.mobile-nav--collapsed .mobile-nav-item span:not(.mobile-nav-icon) {
+                display: none;
+            }
+
+            .mobile-nav-item {
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                text-decoration: none;
+                color: var(--text-muted);
+                font-size: 0.65rem;
+                gap: 2px;
+                padding: var(--space-xs);
+            }
+
+            .mobile-nav-item.active { color: var(--color-accent); }
+
+            .mobile-nav-icon {
+                font-size: 1.1rem;
+                line-height: 1;
+                font-family: var(--font-mono);
+            }
+
+            .page-header h1 { font-size: 1.3rem; }
+            .page-header .page-subtitle { font-size: 0.8rem; }
+        }
+
+        @media (min-width: 601px) {
+            .mobile-nav { display: none; }
+        }
+
+    </style>
+
+    {% block head %}{% endblock %}
+</head>
+
+<body>
+<div class="app-wrapper">
+
+    <header class="app-header">
+        <div class="header-inner">
+            <div class="app-wordmark">sardine<span>tracker</span></div>
+            <nav>
+                <ul class="nav-links">
+                    <li><a href="{{ url_for('daily_entry') }}"
+                        {% if request.endpoint == 'daily_entry' %}class="active"{% endif %}>
+                        today
+                    </a></li>
+                    <li><a href="{{ url_for('forecast') }}"
+                        {% if request.endpoint == 'forecast' %}class="active"{% endif %}>
+                        forecast
+                    </a></li>
+                    {% if track_cycle %}
+                    <li><a href="{{ url_for('cycle_view') }}"
+                        {% if request.endpoint == 'cycle_view' %}class="active"{% endif %}>
+                        cycle
+                    </a></li>
+                    {% endif %}
+                    <li><a href="{{ url_for('timeline') }}"
+                        {% if request.endpoint == 'timeline' %}class="active"{% endif %}>
+                        model
+                    </a></li>
+                    <li><a href="{{ url_for('uv_lag') }}"
+                        {% if request.endpoint == 'uv_lag' %}class="active"{% endif %}>
+                        uv lag
+                    </a></li>
+                    <li><a href="{{ url_for('wearable') }}"
+                        {% if request.endpoint == 'wearable' %}class="active"{% endif %}>
+                        wearable
+                    </a></li>
+                    <li><a href="{{ url_for('hrv_view') }}"
+                        {% if request.endpoint == 'hrv_view' %}class="active"{% endif %}>
+                        reactions
+                    </a></li>
+                    <li><a href="{{ url_for('clinical_record') }}"
+                        {% if request.endpoint == 'clinical_record' %}class="active"{% endif %}>
+                         clinical
+                    </a></li>
+                    <li><a href="{{ url_for('clinical_report') }}"
+                        {% if request.endpoint == 'clinical_report' %}class="active"{% endif %}>
+                        report
+                    </a></li>
+                    <li><a href="{{ url_for('search') }}"
+                        {% if request.endpoint == 'search' %}class="active"{% endif %}>
+                        search
+                    </a></li>
+                    <li style="margin-left: auto; display: flex; align-items: center; gap: 0.5rem;">
+                        <button id="theme-toggle"
+                                style="background: var(--bg-elevated);
+                                       border: 1px solid var(--border-subtle);
+                                       border-radius: 20px;
+                                       padding: 0.25rem;
+                                       cursor: pointer;
+                                       display: flex;
+                                       gap: 0.25rem;
+                                       transition: all 0.2s;"
+                                aria-label="Toggle light/dark theme">
+                            <span class="theme-option" id="theme-dark"
+                                  style="padding: 0.25rem 0.5rem;
+                                         border-radius: 16px;
+                                         font-size: 0.9rem;
+                                         transition: all 0.2s;
+                                         cursor: pointer;">
+                                ☽
+                            </span>
+                            <span class="theme-option" id="theme-light"
+                                  style="padding: 0.25rem 0.5rem;
+                                         border-radius: 16px;
+                                         font-size: 0.9rem;
+                                         transition: all 0.2s;
+                                         cursor: pointer;">
+                                ✯
+                            </span>
+                        </button>
+                        {% if current_user.is_authenticated %}
+                        {% if current_user.is_admin %}
+                        <a href="{{ url_for('admin_panel') }}"
+                           style="color:var(--text-muted); font-size:0.8rem; text-decoration:none; opacity:0.7;"
+                           title="admin">
+                            admin
+                        </a>
+                        {% endif %}
+                        <a href="{{ url_for('settings') }}"
+                           style="color:var(--text-muted); font-size:0.8rem; text-decoration:none;"
+                           title="settings">
+                            {{ current_user.display_name }}
+                        </a>
+                        <a href="{{ url_for('help_page') }}"
+                           style="color:var(--text-muted); font-size:0.8rem; text-decoration:none; opacity:0.7;"
+                           title="help">
+                            help
+                        </a>
+                        <a href="{{ url_for('logout') }}"
+                           style="color:var(--text-muted); font-size:0.8rem; text-decoration:none; opacity:0.7;">
+                            logout
+                        </a>
+                        {% endif %}
+                    </li>
+                </ul>
+            </nav>
+        </div>
+    </header>
+
+    <main class="app-main">
+        {% block content %}{% endblock %}
+    </main>
+
+    <nav class="mobile-nav">
+        <a href="{{ url_for('daily_entry') }}"
+           class="mobile-nav-item {% if request.endpoint in ('daily_entry', 'mobile_log') %}active{% endif %}">
+            <span class="mobile-nav-icon">+</span>
+            <span>log</span>
+        </a>
+        <a href="{{ url_for('forecast') }}"
+           class="mobile-nav-item {% if request.endpoint == 'forecast' %}active{% endif %}">
+            <span class="mobile-nav-icon">~</span>
+            <span>risk</span>
+        </a>
+        <a href="{{ url_for('clinical_record') }}"
+           class="mobile-nav-item {% if request.endpoint == 'clinical_record' %}active{% endif %}">
+            <span class="mobile-nav-icon">#</span>
+            <span>clinical</span>
+        </a>
+        <a href="{{ url_for('timeline') }}"
+           class="mobile-nav-item {% if request.endpoint == 'timeline' %}active{% endif %}">
+            <span class="mobile-nav-icon">|||</span>
+            <span>model</span>
+        </a>
+        {% if 'HealthSynciOS' in request.headers.get('User-Agent', '') %}
+        <a href="/ios/sync-healthkit"
+           class="mobile-nav-item">
+            <span class="mobile-nav-icon">&#x21bb;</span>
+            <span>sync</span>
+        </a>
+        {% endif %}
+        <div class="mobile-nav-item {% if request.endpoint in ('hrv_view', 'uv_lag', 'wearable', 'cycle_view', 'search', 'help_page', 'settings', 'clinical_report') %}active{% endif %}"
+             id="mobileMoreBtn" style="cursor:pointer; position:relative;">
+            <span class="mobile-nav-icon">...</span>
+            <span>more</span>
+            <div id="mobileMoreMenu" style="display:none; position:absolute; bottom:60px; right:-10px;
+                        background:var(--bg-elevated); border:1px solid var(--border-subtle);
+                        border-radius:var(--radius-sm); padding:var(--space-sm) 0;
+                        min-width:140px; box-shadow:0 -4px 12px rgba(0,0,0,0.3);">
+                <a href="{{ url_for('hrv_view') }}" style="display:block; padding:var(--space-xs) var(--space-md); color:var(--text-secondary); text-decoration:none; font-size:0.85rem;">reactions</a>
+                <a href="{{ url_for('uv_lag') }}" style="display:block; padding:var(--space-xs) var(--space-md); color:var(--text-secondary); text-decoration:none; font-size:0.85rem;">uv lag</a>
+                <a href="{{ url_for('wearable') }}" style="display:block; padding:var(--space-xs) var(--space-md); color:var(--text-secondary); text-decoration:none; font-size:0.85rem;">wearable</a>
+                {% if track_cycle %}
+                <a href="{{ url_for('cycle_view') }}" style="display:block; padding:var(--space-xs) var(--space-md); color:var(--text-secondary); text-decoration:none; font-size:0.85rem;">cycle</a>
+                {% endif %}
+                <a href="{{ url_for('clinical_report') }}" style="display:block; padding:var(--space-xs) var(--space-md); color:var(--text-secondary); text-decoration:none; font-size:0.85rem;">report</a>
+                <a href="{{ url_for('search') }}" style="display:block; padding:var(--space-xs) var(--space-md); color:var(--text-secondary); text-decoration:none; font-size:0.85rem;">search</a>
+                <a href="{{ url_for('help_page') }}" style="display:block; padding:var(--space-xs) var(--space-md); color:var(--text-secondary); text-decoration:none; font-size:0.85rem;">help</a>
+                {% if current_user.is_authenticated %}
+                <a href="{{ url_for('settings') }}" style="display:block; padding:var(--space-xs) var(--space-md); color:var(--text-secondary); text-decoration:none; font-size:0.85rem;">settings</a>
+                <a href="{{ url_for('logout') }}" style="display:block; padding:var(--space-xs) var(--space-md); color:var(--text-muted); text-decoration:none; font-size:0.85rem;">logout</a>
+                {% endif %}
+            </div>
+        </div>
+    </nav>
+
+</div>
+
+{% block scripts %}{% endblock %}
+
+<script>
+// Theme toggle functionality
+const themeToggle = document.getElementById('theme-toggle');
+const darkOption = document.getElementById('theme-dark');
+const lightOption = document.getElementById('theme-light');
+const htmlElement = document.documentElement;
+
+// Check for saved theme preference or default to dark
+const currentTheme = localStorage.getItem('theme') || 'dark';
+htmlElement.setAttribute('data-theme', currentTheme);
+updateToggleUI(currentTheme);
+
+// Toggle theme on click
+themeToggle.addEventListener('click', () => {
+    const currentTheme = htmlElement.getAttribute('data-theme');
+    const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
+    
+    htmlElement.setAttribute('data-theme', newTheme);
+    localStorage.setItem('theme', newTheme);
+    updateToggleUI(newTheme);
+    
+    // Reload the page to refresh charts with new theme colors
+    window.location.reload();
+});
+
+// Update toggle appearance
+function updateToggleUI(theme) {
+    if (theme === 'dark') {
+        darkOption.style.background = 'var(--bg-input)';
+        darkOption.style.color = 'var(--text-primary)';
+        lightOption.style.background = 'transparent';
+        lightOption.style.color = 'var(--text-muted)';
+    } else {
+        lightOption.style.background = 'var(--bg-input)';
+        lightOption.style.color = 'var(--text-primary)';
+        darkOption.style.background = 'transparent';
+        darkOption.style.color = 'var(--text-muted)';
+    }
+}
+</script>
+
+<script>
+// CSRF: auto-inject token into all POST forms and provide a fetch wrapper
+(function() {
+    const token = document.querySelector('meta[name="csrf-token"]')?.content;
+    if (!token) return;
+    document.addEventListener('DOMContentLoaded', function() {
+        document.querySelectorAll('form').forEach(function(form) {
+            if (form.method.toLowerCase() === 'post' &&
+                !form.querySelector('[name="csrf_token"]')) {
+                const inp = document.createElement('input');
+                inp.type = 'hidden';
+                inp.name = 'csrf_token';
+                inp.value = token;
+                form.appendChild(inp);
+            }
+        });
+    });
+    window.csrfFetch = function(url, options) {
+        options = options || {};
+        options.headers = Object.assign({'X-CSRFToken': token}, options.headers || {});
+        return fetch(url, options);
+    };
+})();
+</script>
+
+<script>
+// Mobile "more" menu toggle
+(function() {
+    const btn = document.getElementById('mobileMoreBtn');
+    const menu = document.getElementById('mobileMoreMenu');
+    if (!btn || !menu) return;
+    btn.addEventListener('click', function(e) {
+        e.stopPropagation();
+        menu.style.display = menu.style.display === 'none' ? 'block' : 'none';
+    });
+    document.addEventListener('click', function() { menu.style.display = 'none'; });
+})();
+</script>
+
+<script>
+// Mobile nav auto-collapse: collapses to icons-only after 2.5s of idle,
+// re-expands on scroll or tap.
+(function() {
+    const nav = document.querySelector('.mobile-nav');
+    if (!nav) return;
+    let idleTimer = null;
+    const IDLE_MS = 2500;
+
+    function scheduleCollapse() {
+        clearTimeout(idleTimer);
+        idleTimer = setTimeout(function() {
+            nav.classList.add('mobile-nav--collapsed');
+        }, IDLE_MS);
+    }
+    function expand() {
+        nav.classList.remove('mobile-nav--collapsed');
+        scheduleCollapse();
+    }
+
+    window.addEventListener('scroll', expand, { passive: true });
+    nav.addEventListener('click', expand);
+    scheduleCollapse();
+})();
+</script>
+
+</body>
+</html>

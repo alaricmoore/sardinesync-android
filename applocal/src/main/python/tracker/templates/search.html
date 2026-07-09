@@ -1,0 +1,700 @@
+{% extends "base.html" %}
+
+{% block title %}search — sardinetracker{% endblock %}
+
+{% block head %}
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>search</h1>
+</div>
+
+<!-- Data Management Card -->
+<div class="card" style="margin-bottom:var(--space-lg);">
+    <div style="display:flex; justify-content:space-between; align-items:center; gap:var(--space-md);">
+        <div style="flex:1;">
+            <h3 style="margin:0 0 0.25rem 0; font-size:1rem; color:var(--text-primary);">
+                data management
+            </h3>
+            <p style="margin:0; font-size:0.85rem; color:var(--text-muted);">
+                Export all your tracking data for backup or transfer
+            </p>
+        </div>
+        <div style="display:flex; gap:var(--space-sm);">
+            <a href="/export/all-data"
+               class="btn btn-primary"
+               style="display:flex; align-items:center; gap:0.5rem; text-decoration:none;">
+                <span>⏚</span>
+                <span>Download All Data</span>
+            </a>
+            <button onclick="showDeleteModal()"
+                    class="btn"
+                    style="background:transparent; border:1px solid var(--color-danger);
+                           color:var(--color-danger); font-size:0.85rem; padding:0.5rem 1rem;">
+                Delete
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- Delete Confirmation Modal -->
+<div id="deleteModal" style="display:none; position:fixed; top:0; left:0; right:0; bottom:0; 
+                              background:rgba(0,0,0,0.85); z-index:9999; 
+                              align-items:center; justify-content:center;">
+    <div style="background:var(--bg-surface); border:2px solid var(--color-danger); 
+                border-radius:var(--radius-lg); max-width:600px; width:90%; 
+                padding:var(--space-xl); position:relative;">
+
+<!-- Last exported info -->
+        <div id="lastExportInfo" style="margin-bottom:var(--space-lg); padding:var(--space-md); 
+                                         background:var(--bg-elevated); border-radius:var(--radius-sm); 
+                                         border-left:3px solid var(--color-warning);">
+            <p style="margin:0; font-size:0.85rem; color:var(--text-muted);">
+                💡 <strong>Backup first!</strong> Use the "Download All Data" button to create a backup 
+                before deleting.
+            </p>
+        </div>
+        
+        <!-- ASCII Gandalf -->
+        <pre style="color:var(--text-muted); font-size:0.7rem; line-height:1.2; 
+                    margin:0 0 var(--space-lg) 0; text-align:center; overflow-x:auto;">
+                    /\
+                   /**\
+                  /****\   /\
+                 /      \ /**\
+                /  /\    /    \        /\    /\  /\      /\            /\/\/\  /\
+               /  /  \  /      \      /  \/\/  \/  \  /\/  \/\  /\  /\/ / /  \/  \
+              /  /    \/ /\     \    /    \ \  /    \/ /   /  \/  \/  \  /    \   \
+             /  /      \/  \/\   \  /      \    /   /    \
+          __/__/_______/___/__\___\__________________________________________________
+
+                           YOU SHALL NOT PASS!
+        </pre>
+        
+        <div style="margin-bottom:var(--space-lg); color:var(--text-primary);">
+            <h2 style="margin:0 0 var(--space-md) 0; color:var(--color-danger); font-size:1.5rem;">
+                ⚠️ ATTENTION: THIS ACTION IS PERMANENT
+            </h2>
+            <p style="margin:0 0 var(--space-sm) 0; line-height:1.6;">
+                You are about to <strong>permanently delete ALL your tracking data</strong>, including:
+            </p>
+            <ul style="margin:var(--space-sm) 0; padding-left:var(--space-lg); 
+                       color:var(--text-secondary); line-height:1.8;">
+                <li>All daily observations (symptoms, UV, HRV, sleep)</li>
+                <li>All lab results and test results</li>
+                <li>All medications and treatment history</li>
+                <li>All clinical events and appointments</li>
+                <li>All clinician contact information</li>
+                <li>The entire SQLite database</li>
+            </ul>
+            <p style="margin:var(--space-md) 0 0 0; color:var(--color-danger); font-weight:600;">
+                This action CANNOT be undone. There is no recovery.
+            </p>
+        </div>
+        
+
+        
+        <!-- Type to confirm -->
+        <div style="margin-bottom:var(--space-lg);">
+            <label style="display:block; margin-bottom:var(--space-sm); 
+                          color:var(--text-primary); font-weight:500;">
+                Type <code style="background:var(--bg-elevated); padding:2px 6px; 
+                                 border-radius:3px; color:var(--color-danger);">DELETE MY DATA</code> 
+                to enable deletion:
+            </label>
+            <input type="text" 
+                   id="deleteConfirmInput" 
+                   placeholder="DELETE MY DATA"
+                   oninput="checkDeleteInput()"
+                   style="width:100%; padding:var(--space-sm); font-size:1rem; 
+                          background:var(--bg-input); border:2px solid var(--border-medium); 
+                          border-radius:var(--radius-sm); color:var(--text-primary); 
+                          font-family:var(--font-mono);">
+        </div>
+        
+        <!-- Action buttons -->
+        <div style="display:flex; gap:var(--space-md); justify-content:flex-end;">
+            <button onclick="hideDeleteModal()" 
+                    class="btn btn-secondary">
+                Cancel (ESC)
+            </button>
+            <button id="confirmDeleteBtn" 
+                    onclick="confirmDelete()" 
+                    disabled
+                    class="btn"
+                    style="background:var(--color-danger); color:white; border:none; 
+                           opacity:0.5; cursor:not-allowed;">
+                🗑 Delete Everything Forever
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- Search form -->
+<form method="GET" action="{{ url_for('search') }}"
+      style="display:flex; gap:var(--space-md); margin-bottom:var(--space-lg); align-items:center;">
+    <input type="text" name="q" value="{{ query }}"
+           placeholder="search notes, labs, events, medications..."
+           autofocus
+           style="flex:1; font-size:1rem; padding:var(--space-sm) var(--space-md);">
+    <button type="submit" class="btn btn-primary">search</button>
+    {% if query %}
+    <a href="{{ url_for('search') }}" class="btn btn-secondary">clear</a>
+    {% endif %}
+</form>
+
+{% if query %}
+    {% if total == 0 %}
+    <div class="empty-state">
+        <p>No results for <strong style="color:var(--text-primary);">{{ query }}</strong>.</p>
+    </div>
+    {% else %}
+
+    <!-- Results header + report button -->
+    <div style="display:flex; justify-content:space-between; align-items:center;
+                margin-bottom:var(--space-lg); flex-wrap:wrap; gap:var(--space-md);">
+        <p style="color:var(--text-muted);">
+            {{ total }} result{% if total != 1 %}s{% endif %} for
+            <strong style="color:var(--text-primary);">{{ query }}</strong>
+        </p>
+        <div style="display:flex; gap:var(--space-sm); align-items:center;">
+            <span id="selectedCount" style="color:var(--text-muted);
+                  font-size:0.85rem; font-family:var(--font-mono);">
+                0 selected
+            </span>
+            <button class="btn btn-secondary" onclick="selectAll()">select all</button>
+            <button class="btn btn-secondary" onclick="clearAll()">clear</button>
+            <a href="#" id="reportLink" class="btn btn-primary" 
+               style="pointer-events:none; opacity:0.5;">
+                full report →
+            </a>    
+        </div>
+    </div>
+
+    <!-- Result groups -->
+    {% set groups = [
+        ('daily',       'daily entries',   'badge-neuro'),
+        ('labs',        'lab results',     'badge-muscle'),
+        ('events',      'clinical events', 'badge-cognitive'),
+        ('medications', 'medications',     'badge-derm'),
+    ] %}
+
+    {% for key, label, badge_class in groups %}
+    {% if grouped[key] %}
+    <div class="result-group" style="margin-bottom:var(--space-xl);">
+        <div style="display:flex; align-items:center; gap:var(--space-sm);
+                    margin-bottom:var(--space-md);">
+            <h3 style="margin:0; font-size:1rem; color:var(--text-secondary);">
+                {{ label }}
+            </h3>
+            <span class="badge {{ badge_class }}">{{ grouped[key]|length }}</span>
+        </div>
+
+        {% for result in grouped[key] %}
+        <div class="result-card" id="card_{{ result.id }}"
+             onclick="toggleResult('{{ result.id }}')"
+             style="cursor:pointer;">
+            <div style="display:flex; gap:var(--space-md); align-items:flex-start;">
+                <input type="checkbox"
+                       id="chk_{{ result.id }}"
+                       data-id="{{ result.id }}"
+                       data-type="{{ result.type }}"
+                       data-date="{{ result.date }}"
+                       data-title="{{ result.title | e }}"
+                       data-snippet="{{ result.snippet | e }}"
+                       {% if result.type == 'daily' %}
+                       data-pain="{{ result.pain or '' }}"
+                       data-fatigue="{{ result.fatigue or '' }}"
+                       {% endif %}
+                       onclick="event.stopPropagation(); handleCheck(this)"
+                       style="margin-top:3px; flex-shrink:0;
+                              accent-color:var(--color-accent);">
+                <div style="flex:1; min-width:0;">
+                    <div style="display:flex; gap:var(--space-md);
+                                align-items:baseline; flex-wrap:wrap;
+                                margin-bottom:4px;">
+                        <span class="mono" style="color:var(--text-muted);
+                              font-size:0.85rem; flex-shrink:0;">
+                            {{ result.date }}
+                        </span>
+                        <span style="color:var(--text-primary); font-weight:500;">
+                            {{ result.title }}
+                        </span>
+                    </div>
+                    {% if result.snippet %}
+                    <div>
+                        <p class="result-snippet" id="snippet_{{ result.id }}">{{ result.snippet }}</p>
+                        <span class="expand-toggle" 
+                              id="toggle_{{ result.id }}" 
+                              onclick="event.stopPropagation(); toggleSnippet('{{ result.id }}')">
+                            show more ↓
+                        </span>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+    {% endif %}
+    {% endfor %}
+    {% endif %}
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+
+<style>
+.result-card {
+    background: var(--bg-elevated);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-md);
+    padding: var(--space-md);
+    margin-bottom: var(--space-sm);
+    transition: border-color 0.15s, background 0.15s;
+}
+.result-card:hover { border-color: var(--border-medium); }
+.result-card.selected {
+    border-color: var(--color-accent);
+    background: color-mix(in srgb, var(--color-accent) 8%, var(--bg-elevated));
+}
+.result-snippet {
+    margin: 0;
+    color: var(--text-muted);
+    font-size: 0.875rem;
+    white-space: pre-wrap;
+    overflow: hidden;
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    -webkit-box-orient: vertical;
+    transition: all 0.2s ease;
+}
+
+.result-snippet.expanded {
+    -webkit-line-clamp: unset;
+    overflow: visible;
+}
+
+.expand-toggle {
+    color: var(--color-accent);
+    font-size: 0.75rem;
+    cursor: pointer;
+    display: inline-block;
+    margin-top: 4px;
+    user-select: none;
+}
+
+.expand-toggle:hover {
+    text-decoration: underline;
+}
+@media print {
+    nav, form, .add-toggle-row,
+    #reportModal > div > div:last-child { display: none; }
+}
+</style>
+<script>
+// ============================================================
+// Data from Flask
+// ============================================================
+const CHART_DATA    = {{ chart_dataset_json | safe }};
+const TRACKING_START = "{{ tracking_start or '' }}";
+const TRACKING_END   = "{{ tracking_end or '' }}";
+const HCQ_START      = "{{ hcq_start or '' }}";
+const PATIENT_NAME   = "{{ patient_name or '' }}";
+const QUERY          = {{ query | tojson }};
+const ACTIVE_MEDS = {{ (active_meds or []) | tojson }};
+const results = {{ grouped | tojson }};
+
+// ============================================================
+// Selection state — persists across searches via sessionStorage
+// ============================================================
+let selected = new Map();
+let reportChartInstance = null;
+
+function loadSelected() {
+    try {
+        const stored = sessionStorage.getItem('reportSelection');
+        if (stored) {
+            const arr = JSON.parse(stored);
+            arr.forEach(([k, v]) => selected.set(k, v));
+        }
+    } catch(e) {}
+}
+
+function saveSelected() {
+    try {
+        sessionStorage.setItem('reportSelection',
+            JSON.stringify([...selected.entries()]));
+    } catch(e) {}
+}
+
+function handleCheck(checkbox) {
+    const id = checkbox.dataset.id;
+    if (checkbox.checked) {
+        selected.set(id, {
+            type:    checkbox.dataset.type,
+            date:    checkbox.dataset.date,
+            title:   checkbox.dataset.title,
+            snippet: checkbox.dataset.snippet,
+            pain:    checkbox.dataset.pain || null,
+            fatigue: checkbox.dataset.fatigue || null,
+        });
+    } else {
+        selected.delete(id);
+    }
+    saveSelected();
+    updateUI();
+}
+
+function toggleResult(id) {
+    const chk = document.getElementById(`chk_${id}`);
+    if (chk) { chk.checked = !chk.checked; handleCheck(chk); }
+}
+
+function selectAll() {
+    document.querySelectorAll('[data-id]').forEach(chk => {
+        chk.checked = true;
+        const id = chk.dataset.id;
+        selected.set(id, {
+            type:    chk.dataset.type,
+            date:    chk.dataset.date,
+            title:   chk.dataset.title,
+            snippet: chk.dataset.snippet,
+            pain:    chk.dataset.pain || null,
+            fatigue: chk.dataset.fatigue || null,
+        });
+    });
+    saveSelected();
+    updateUI();
+}
+
+function clearAll() {
+    selected.clear();
+    saveSelected();
+    document.querySelectorAll('[data-id]').forEach(chk => { chk.checked = false; });
+    updateUI();
+}
+
+function updateUI() {
+    const count = selected.size;
+    document.getElementById('selectedCount').textContent = `${count} selected`;
+    updateReportLink();
+    document.querySelectorAll('.result-card').forEach(card => {
+        const id = card.id.replace('card_', '');
+        card.classList.toggle('selected', selected.has(id));
+    });
+}
+
+window.addEventListener('DOMContentLoaded', () => {
+    loadSelected();
+    document.querySelectorAll('[data-id]').forEach(chk => {
+        if (selected.has(chk.dataset.id)) chk.checked = true;
+    });
+    updateUI();
+});
+
+// Hide "show more" for snippets that don't need expansion
+document.querySelectorAll('.result-snippet').forEach(snippet => {
+    const toggle = document.getElementById(snippet.id.replace('snippet_', 'toggle_'));
+    if (toggle && snippet.scrollHeight <= snippet.clientHeight + 5) {
+        // Text fits in 3 lines, hide the toggle
+        toggle.style.display = 'none';
+    }
+});
+
+
+// ============================================================
+// Rolling average helper
+// ============================================================
+function rollingAvg(arr, window) {
+    return arr.map((_, i) => {
+        const slice = arr.slice(Math.max(0, i - window + 1), i + 1)
+                         .filter(v => v !== null && v !== undefined);
+        if (slice.length < 2) return null;
+        return Math.round((slice.reduce((a, b) => a + b, 0) / slice.length) * 100) / 100;
+    });
+}
+
+// ============================================================
+// Report generation
+// ============================================================
+function generateReport() {
+    if (selected.size === 0) return;
+
+    const items = [...selected.values()]
+        .sort((a, b) => a.date.localeCompare(b.date));
+
+    // Date range of selected items
+    const dates    = items.map(i => i.date).sort();
+    const minDate  = dates[0];
+    const maxDate  = dates[dates.length - 1];
+
+    // Pain/fatigue stats from selected daily entries
+    const dailyItems = items.filter(i => i.type === 'daily');
+    const painVals    = dailyItems.map(i => parseFloat(i.pain)).filter(v => !isNaN(v));
+    const fatigueVals = dailyItems.map(i => parseFloat(i.fatigue)).filter(v => !isNaN(v));
+    const meanPain    = painVals.length
+        ? (painVals.reduce((a, b) => a + b, 0) / painVals.length).toFixed(1)
+        : null;
+    const meanFatigue = fatigueVals.length
+        ? (fatigueVals.reduce((a, b) => a + b, 0) / fatigueVals.length).toFixed(1)
+        : null;
+
+    // Group by type for counts
+    const typeCounts = {};
+    items.forEach(i => { typeCounts[i.type] = (typeCounts[i.type] || 0) + 1; });
+    const typeLabels = {
+        daily: 'daily observation', lab: 'lab result',
+        event: 'clinical event',   medication: 'medication',
+    };
+    const countStr = Object.entries(typeCounts)
+        .map(([t, n]) => `${n} ${typeLabels[t] || t}${n !== 1 ? 's' : ''}`)
+        .join(', ');
+
+    // Active meds summary
+    const medStr = ACTIVE_MEDS.length
+        ? ACTIVE_MEDS.map(m => {
+            const dose = m.dose ? `${m.dose}${m.unit || ''}` : '';
+            const freq = m.frequency || '';
+            return `${m.name}${dose ? ' ' + dose : ''}${freq ? ' ' + freq : ''}`;
+          }).join('; ')
+        : 'none recorded';
+
+    // Build summary HTML
+    const today = new Date().toLocaleDateString('en-US',
+        { year: 'numeric', month: 'long', day: 'numeric' });
+
+    let summaryHTML = `
+        <div style="margin-bottom:var(--space-sm);">
+            <strong style="color:var(--text-primary);">
+                ${PATIENT_NAME || 'Patient'}
+            </strong>
+            &nbsp;·&nbsp; Generated ${today}
+        </div>
+        <div style="margin-bottom:var(--space-xs);">
+            This summary includes ${countStr} matching
+            <strong style="color:var(--text-primary);">${QUERY}</strong>,
+            spanning ${minDate} to ${maxDate}.
+            Full tracking record: ${TRACKING_START} – ${TRACKING_END}.
+        </div>`;
+
+    if (meanPain !== null || meanFatigue !== null) {
+        summaryHTML += `<div style="margin-bottom:var(--space-xs);">`;
+        if (meanPain !== null)
+            summaryHTML += `Mean pain (selected entries): <strong style="color:#c94040;">${meanPain}/10</strong>. `;
+        if (meanFatigue !== null)
+            summaryHTML += `Mean fatigue: <strong style="color:#d4a054;">${meanFatigue}/10</strong>.`;
+        summaryHTML += `</div>`;
+    }
+
+    summaryHTML += `
+        <div>
+            <strong>Current medications:</strong>
+            <span style="color:var(--text-muted);">${medStr}</span>
+        </div>`;
+
+    if (HCQ_START) {
+        summaryHTML += `
+        <div style="margin-top:4px; color:var(--text-muted); font-size:0.85rem;">
+            Hydroxychloroquine started ${HCQ_START}.
+        </div>`;
+    }
+
+    document.getElementById('reportSummary').innerHTML = summaryHTML;
+
+    // Build entry list HTML
+    const groups = {};
+    items.forEach(item => {
+        if (!groups[item.type]) groups[item.type] = [];
+        groups[item.type].push(item);
+    });
+
+    const entryTypeLabels = {
+        daily: 'Daily Observations', lab: 'Laboratory Results',
+        event: 'Clinical Events',    medication: 'Medications',
+    };
+
+    let contentHTML = '';
+    Object.entries(groups).forEach(([type, typeItems]) => {
+        contentHTML += `
+            <div style="margin-bottom:var(--space-xl);">
+                <h3 style="color:var(--text-secondary); font-size:0.8rem;
+                           text-transform:uppercase; letter-spacing:0.08em;
+                           margin:0 0 var(--space-md) 0;
+                           border-bottom:1px solid var(--border-subtle);
+                           padding-bottom:var(--space-xs);">
+                    ${entryTypeLabels[type] || type}
+                </h3>`;
+
+        typeItems.forEach(item => {
+            contentHTML += `
+                <div style="margin-bottom:var(--space-md); padding-left:var(--space-md);
+                            border-left:2px solid var(--border-subtle);">
+                    <div style="display:flex; gap:var(--space-md); margin-bottom:4px;">
+                        <span style="font-family:var(--font-mono); font-size:0.8rem;
+                                     color:var(--text-muted); flex-shrink:0;">
+                            ${item.date}
+                        </span>
+                        <strong style="color:var(--text-primary);">${item.title}</strong>
+                    </div>
+                    ${item.snippet ? `
+                    <p style="margin:0; color:var(--text-secondary); font-size:0.875rem;">
+                        ${item.snippet}
+                    </p>` : ''}
+                </div>`;
+        });
+
+        contentHTML += `</div>`;
+    });
+
+    document.getElementById('reportContent').innerHTML = contentHTML;
+
+    // Build mini chart for date range of selected items
+    buildReportChart(minDate, maxDate);
+
+    document.getElementById('reportModal').style.display = 'block';
+    document.body.style.overflow = 'hidden';
+}
+
+function updateReportLink() {
+    const count = selected.size;
+    const link = document.getElementById('reportLink');
+    
+    if (count === 0) {
+        link.style.pointerEvents = 'none';
+        link.style.opacity = '0.5';
+        link.href = '#';
+        return;
+    }
+    
+    // Get dates directly from selected Map values
+    let dates = [];
+    selected.forEach((value, key) => {
+        if (value.date) {
+            dates.push(value.date);
+        }
+    });
+    
+    if (dates.length > 0) {
+        dates.sort();
+        const start = dates[0];
+        const end = dates[dates.length - 1];
+        link.href = `/report?start=${start}&end=${end}`;
+        link.style.pointerEvents = 'auto';
+        link.style.opacity = '1';
+    } else {
+        link.style.pointerEvents = 'none';
+        link.style.opacity = '0.5';
+        link.href = '#';
+    }
+}
+
+function toggleSnippet(id) {
+    const snippet = document.getElementById('snippet_' + id);
+    const toggle = document.getElementById('toggle_' + id);
+    
+    if (snippet.classList.contains('expanded')) {
+        // Collapse
+        snippet.classList.remove('expanded');
+        toggle.textContent = 'show more ↓';
+    } else {
+        // Expand
+        snippet.classList.add('expanded');
+        toggle.textContent = 'show less ↑';
+    }
+}
+
+function downloadAllData(event) {
+    // Show loading state
+    const btn = event.currentTarget;
+    const originalHTML = btn.innerHTML;
+    btn.innerHTML = '<span>⨋</span><span>Preparing download...</span>';
+    btn.disabled = true;
+    
+    // Trigger download
+    window.location.href = '/export/all-data';
+    
+    // Reset button after delay
+    setTimeout(() => {
+        btn.innerHTML = originalHTML;
+        btn.disabled = false;
+    }, 3000);
+}
+
+function showDeleteModal() {
+    const modal = document.getElementById('deleteModal');
+    modal.style.display = 'flex';
+    document.getElementById('deleteConfirmInput').value = '';
+    document.getElementById('deleteConfirmInput').focus();
+    
+    // ESC key to close
+    document.addEventListener('keydown', handleDeleteModalEsc);
+}
+
+function hideDeleteModal() {
+    const modal = document.getElementById('deleteModal');
+    modal.style.display = 'none';
+    document.removeEventListener('keydown', handleDeleteModalEsc);
+}
+
+function handleDeleteModalEsc(e) {
+    if (e.key === 'Escape') {
+        hideDeleteModal();
+    }
+}
+
+function checkDeleteInput() {
+    const input = document.getElementById('deleteConfirmInput');
+    const btn = document.getElementById('confirmDeleteBtn');
+    
+    if (input.value === 'DELETE MY DATA') {
+        btn.disabled = false;
+        btn.style.opacity = '1';
+        btn.style.cursor = 'pointer';
+    } else {
+        btn.disabled = true;
+        btn.style.opacity = '0.5';
+        btn.style.cursor = 'not-allowed';
+    }
+}
+
+function confirmDelete() {
+    // Final confirmation
+    const reallyConfirm = confirm(
+        "🧙‍♂️ GANDALF'S FINAL WARNING 🧙‍♂️\n\n" +
+        "This is your LAST chance to turn back.\n\n" +
+        "All your data will be permanently deleted.\n\n" +
+        "Click OK to proceed with deletion, or Cancel to keep your data."
+    );
+    
+    if (reallyConfirm) {
+        // Show loading
+        const btn = document.getElementById('confirmDeleteBtn');
+        btn.innerHTML = '⏳ Deleting...';
+        btn.disabled = true;
+        
+        // Execute deletion
+        csrfFetch('/delete/all-data', { method: 'POST' })
+            .then(async response => {
+                if (response.ok) {
+                    alert('All data has been deleted. Redirecting to home page...');
+                    window.location.href = '/';
+                } else {
+                    const text = await response.text();
+                    alert('Error deleting data: ' + text + '\n\nCheck the Flask console for details.');
+                    hideDeleteModal();
+                }
+            })
+            .catch(error => {
+                alert('Error: ' + error.message);
+                hideDeleteModal();
+            });
+    }
+}
+
+</script>
+
+
+{% endblock %}

@@ -1,0 +1,1020 @@
+{% extends "base.html" %}
+
+{% block title %}{{ entry_date }} — sardinetracker{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>{{ entry_date }}</h1>
+    <p class="page-subtitle">daily entry</p>
+    <p style="font-size:0.75rem; margin-top:var(--space-xs);">
+        {% if quick_mode %}
+        <a href="{{ url_for('daily_entry', date=entry_date) }}" style="color:var(--text-muted);">full entry</a>
+        <span style="color:var(--color-accent); margin-left:var(--space-sm);">quick entry</span>
+        {% else %}
+        <span style="color:var(--color-accent);">full entry</span>
+        <a href="{{ url_for('daily_entry', date=entry_date, mode='quick') }}"
+           style="color:var(--text-muted); margin-left:var(--space-sm);">quick entry</a>
+        {% endif %}
+    </p>
+</div>
+
+<!-- Date navigation -->
+{% set nav_mode = 'quick' if quick_mode else none %}
+<div class="date-nav">
+    <a href="{{ url_for('daily_entry', date=prev_date, mode=nav_mode) }}" class="date-nav-btn">
+        ← previous day
+    </a>
+    
+    <div class="date-nav-center">
+        {% if not is_today %}
+        <a href="{{ url_for('daily_entry') }}" class="btn btn-secondary btn-sm">
+            jump to today
+        </a>
+        <span style="color:var(--text-muted); font-size:0.85rem; margin-left:var(--space-sm);">
+            (viewing past entry)
+        </span>
+        {% else %}
+        <span style="color:var(--color-accent); font-size:0.85rem;">
+            viewing today
+        </span>
+        {% endif %}
+    </div>
+    
+    <a href="{{ url_for('daily_entry', date=next_date, mode=nav_mode) }}"
+       class="date-nav-btn {{ 'disabled' if is_today else '' }}"
+       {% if is_today %}onclick="return false;"{% endif %}>
+        next day →
+    </a>
+</div>
+
+<!-- Recent HealthKit Syncs panel - polled live every 30s -->
+<div class="card" id="syncPanel" style="margin-bottom: var(--space-md);">
+    <div class="card-title" style="display:flex; align-items:center; justify-content:space-between;">
+        <span>recent HealthKit syncs</span>
+        <span id="syncPanelStatus" style="font-size:0.7rem; color:var(--text-muted); font-weight:normal;"></span>
+    </div>
+    <div id="syncPanelBody">
+        {% if recent_syncs %}
+            {% for ev in recent_syncs %}
+            <div class="sync-event" data-posted-at="{{ ev.posted_at }}"
+                 style="padding: var(--space-sm) 0; {% if not loop.last %}border-bottom: 1px solid var(--border-subtle);{% endif %}">
+                <div style="display:flex; align-items:center; gap:var(--space-sm); flex-wrap:wrap;">
+                    <span class="sync-relative" title="{{ ev.posted_at }}"
+                          style="font-size:0.85rem; color:var(--text-primary); font-weight:600;">
+                        {{ ev.posted_at }}
+                    </span>
+                    <span style="font-size:0.7rem; color:var(--text-muted);">
+                        for {{ ev.metric_date }}
+                    </span>
+                    {% if loop.first %}
+                    <span class="sync-new-pill" style="display:none; font-size:0.6rem; padding: 2px 6px;
+                                background: var(--color-accent); color: var(--bg-base);
+                                border-radius: 10px; font-weight:700; letter-spacing:0.05em;">NEW</span>
+                    {% endif %}
+                </div>
+                <div class="sync-fields" style="font-size:0.75rem; color:var(--text-secondary); margin-top:4px;
+                            font-family: var(--font-mono); word-break: break-word;">
+                    {%- set parts = [] -%}
+                    {%- for f in ev.fields_updated -%}
+                        {%- set v = ev.payload[f] -%}
+                        {%- if f == 'steps' -%}{%- set _ = parts.append('steps ' ~ ('{:,}'.format(v|int))) -%}
+                        {%- elif f == 'hrv' -%}{%- set _ = parts.append('hrv ' ~ v ~ 'ms') -%}
+                        {%- elif f == 'hrv_rmssd' -%}{%- set _ = parts.append('rmssd ' ~ v ~ 'ms') -%}
+                        {%- elif f == 'resting_heart_rate' -%}{%- set _ = parts.append('rhr ' ~ v ~ 'bpm') -%}
+                        {%- elif f == 'spo2' -%}{%- set _ = parts.append('spo2 ' ~ v ~ '%') -%}
+                        {%- elif f == 'basal_temp_delta' -%}{%- set _ = parts.append('temp ' ~ v ~ '°F') -%}
+                        {%- elif f == 'respiratory_rate' -%}{%- set _ = parts.append('resp ' ~ v) -%}
+                        {%- elif f == 'sun_exposure_min' -%}{%- set _ = parts.append('daylight ' ~ (v|int) ~ 'min') -%}
+                        {%- else -%}{%- set _ = parts.append(f ~ ' ' ~ v) -%}
+                        {%- endif -%}
+                    {%- endfor -%}
+                    {{ parts | join(' · ') }}
+                </div>
+            </div>
+            {% endfor %}
+        {% else %}
+            <div id="syncPanelEmpty" style="padding: var(--space-sm) 0; font-size:0.85rem; color:var(--text-muted);">
+                No HealthKit syncs yet. Check that iOS HealthSync is configured and has permission to read Apple Health.
+            </div>
+        {% endif %}
+    </div>
+</div>
+
+<!-- UV strip - auto-fetched on page load -->
+{% if uv %}
+<div class="uv-strip" id="uv-strip">
+    <div class="uv-value">
+        <span class="label">morning</span>
+        <span class="number" id="uv-morning-val">{{ uv.uv_morning }}</span>
+    </div>
+    <div class="uv-value">
+        <span class="label">noon</span>
+        <span class="number" id="uv-noon-val">{{ uv.uv_noon }}</span>
+    </div>
+    <div class="uv-value">
+        <span class="label">evening</span>
+        <span class="number" id="uv-evening-val">{{ uv.uv_evening }}</span>
+    </div>
+    <div class="uv-value">
+        <span class="label">source</span>
+        <span class="number" id="uv-source-val" style="font-size:0.85rem; color: var(--text-muted);">
+            {{ uv.source }}
+        </span>
+    </div>
+</div>
+{% if uv.source == "yesterday" %}
+<div class="card" style="border-color: var(--color-accent); background: var(--bg-elevated); margin-top: var(--space-xs);">
+    <p style="font-size:0.8rem; margin:0; color: var(--text-muted);">
+        showing <strong>yesterday's UV</strong> — today's data resolves after sundown
+    </p>
+    {% if forecast %}
+    <p style="font-size:0.85rem; margin: var(--space-xs) 0 0 0; color: var(--text-secondary);">
+        today's forecast:
+        <strong>{{ forecast.weather_summary or 'unknown' }}</strong>
+        {% if forecast.cloud_cover_pct is not none %} ({{ forecast.cloud_cover_pct }}% cloud cover){% endif %}
+        {% if forecast.temperature_high is not none %} — high {{ forecast.temperature_high }}°F{% endif %}
+    </p>
+    {% endif %}
+</div>
+{% endif %}
+{% else %}
+<div class="card" style="border-color: var(--color-accent); background: var(--bg-elevated);">
+    <p style="font-size:0.875rem; margin:0;">
+        <strong style="color:var(--text-primary);">UV data unavailable</strong>
+        <span style="color:var(--text-muted);"> — API unreachable or no internet.</span>
+    </p>
+</div>
+{% endif %}
+
+<!-- Manual UV entry (collapsible) - always available -->
+<details style="margin-bottom: var(--space-sm);">
+    <summary style="cursor: pointer; font-size: 0.85rem; color: var(--color-accent); padding: var(--space-xs) 0;">
+        {% if uv and uv.source == "api" %}override UV manually{% else %}enter UV manually{% endif %}
+    </summary>
+    <div class="card" style="margin-top: var(--space-xs);">
+        <div style="display: flex; gap: var(--space-sm); flex-wrap: wrap;">
+            <div class="form-group" style="flex:1; min-width: 80px;">
+                <label style="font-size:0.8rem;">morning</label>
+                <input type="number" id="manual-uv-morning" step="0.1" min="0" max="15"
+                       value="{{ uv.uv_morning if uv else '' }}" placeholder="0.0">
+            </div>
+            <div class="form-group" style="flex:1; min-width: 80px;">
+                <label style="font-size:0.8rem;">noon</label>
+                <input type="number" id="manual-uv-noon" step="0.1" min="0" max="15"
+                       value="{{ uv.uv_noon if uv else '' }}" placeholder="0.0">
+            </div>
+            <div class="form-group" style="flex:1; min-width: 80px;">
+                <label style="font-size:0.8rem;">evening</label>
+                <input type="number" id="manual-uv-evening" step="0.1" min="0" max="15"
+                       value="{{ uv.uv_evening if uv else '' }}" placeholder="0.0">
+            </div>
+        </div>
+        <button type="button" id="save-manual-uv"
+                style="background: var(--color-accent); color: #fff; border: none;
+                       padding: var(--space-xs) var(--space-md); border-radius: 4px;
+                       font-size: 0.85rem; cursor: pointer;">
+            save UV
+        </button>
+        <span id="manual-uv-status" style="font-size: 0.8rem; color: var(--text-muted); margin-left: var(--space-sm);"></span>
+    </div>
+</details>
+
+<form method="POST" action="{{ url_for('daily_entry_submit') }}">
+    <input type="hidden" name="date" value="{{ entry_date }}">
+
+    <!-- Biometrics -->
+    {% if not quick_mode %}
+    <div class="card">
+        <div class="card-title">biometrics</div>
+
+        <div class="form-group">
+            <label>hours slept</label>
+            <div class="range-row">
+                <input type="range" name="hours_slept" min="0" max="14" step="0.25"
+                    value="{{ existing.hours_slept if existing and existing.hours_slept else 7 }}"
+                    oninput="this.nextElementSibling.textContent = this.value">
+                <span class="range-value">
+                    {{ existing.hours_slept if existing and existing.hours_slept else 7 }}
+                </span>
+            </div>
+        </div>
+
+        <div class="form-group">
+            <label>HRV / SDNN <span style="color:var(--text-muted)">(from watch)</span></label>
+            <input type="number" name="hrv" step="0.01" min="0"
+                placeholder="e.g. 28"
+                value="{{ existing.hrv if existing and existing.hrv is not none else '' }}">
+        </div>
+
+        <div class="form-group">
+            <label>RMSSD <span style="color:var(--text-muted)">(parasympathetic)</span></label>
+            <input type="number" name="hrv_rmssd" step="0.01" min="0"
+                placeholder="e.g. 22"
+                value="{{ existing.hrv_rmssd if existing and existing.hrv_rmssd is not none else '' }}">
+        </div>
+
+        <div class="form-group">
+            <label>resting heart rate <span style="color:var(--text-muted)">(bpm)</span></label>
+            <input type="number" name="resting_heart_rate" step="0.01" min="0"
+                placeholder="e.g. 58"
+                value="{{ existing.resting_heart_rate if existing and existing.resting_heart_rate is not none else '' }}">
+        </div>
+
+        <div class="form-group">
+            <label>SpO2 <span style="color:var(--text-muted)">(blood oxygen %)</span></label>
+            <input type="number" name="spo2" step="0.01" min="0" max="100"
+                placeholder="e.g. 98.2"
+                value="{{ existing.spo2 if existing and existing.spo2 is not none else '' }}">
+        </div>
+
+        <div class="form-group">
+            <label>respiratory rate <span style="color:var(--text-muted)">(breaths/min)</span></label>
+            <input type="number" name="respiratory_rate" step="0.01" min="0"
+                placeholder="e.g. 14"
+                value="{{ existing.respiratory_rate if existing and existing.respiratory_rate is not none else '' }}">
+        </div>
+
+        <div class="form-group">
+            <label>basal temp delta <span style="color:var(--text-muted)">(° from your baseline)</span></label>
+            <input type="number" name="basal_temp_delta" step="0.01"
+                placeholder="e.g. +0.6 or -0.3"
+                value="{{ existing.basal_temp_delta if existing and existing.basal_temp_delta else '' }}">
+            {% if bbt_hint %}
+            <div style="font-size: 0.7rem; color: var(--text-muted); margin-top: 2px;">
+                follicular avg: {{ bbt_hint.follicular_avg }}°
+                {% if bbt_hint.luteal_avg is not none %} · luteal avg: {{ bbt_hint.luteal_avg }}°{% endif %}
+                <span style="opacity: 0.6">({{ bbt_hint.n_readings }} readings, 6 wk)</span>
+            </div>
+            {% endif %}
+        </div>
+
+        <div class="form-group">
+            <label>steps</label>
+            <input type="number" name="steps" min="0"
+                placeholder="from Apple Health"
+                value="{{ existing.steps if existing and existing.steps else '' }}">
+        </div>
+
+        <div class="form-group">
+            <label style="display: flex; align-items: center; gap: var(--space-sm);">
+                <input type="checkbox" name="stayed_indoors" id="stayed-indoors" value="1"
+                    {{ 'checked' if existing and existing.stayed_indoors else '' }}>
+                stayed indoors all day
+            </label>
+        </div>
+
+        <div id="sun-fields">
+            <div class="form-group">
+                <label>sun exposure <span style="color:var(--text-muted)">(minutes outdoors)</span></label>
+                <input type="number" name="sun_exposure_min" id="sun-exposure-min" min="0"
+                    placeholder="estimated minutes outdoors"
+                    value="{{ existing.sun_exposure_min if existing and existing.sun_exposure_min else '' }}">
+            </div>
+
+            <div class="form-group">
+                <label>UV protection</label>
+                <select name="uv_protection_level" id="uv-protection-level" style="font-size: 0.9rem;">
+                    <option value="none" {{ 'selected' if not existing or not existing.uv_protection_level or existing.uv_protection_level == 'none' else '' }}>no protection</option>
+                    <option value="spf_hat" {{ 'selected' if existing and existing.uv_protection_level == 'spf_hat' else '' }}>SPF + hat</option>
+                    <option value="full_cover" {{ 'selected' if existing and existing.uv_protection_level == 'full_cover' else '' }}>full cover (long sleeves, umbrella)</option>
+                    <option value="indoors_only" {{ 'selected' if existing and existing.uv_protection_level == 'indoors_only' else '' }}>indoors only (windows, car)</option>
+                </select>
+            </div>
+        </div>
+    </div>
+    {% else %}
+    <input type="hidden" name="hours_slept"
+        value="{{ existing.hours_slept if existing and existing.hours_slept is not none else 7 }}">
+    <input type="hidden" name="hrv"
+        value="{{ existing.hrv if existing and existing.hrv is not none else '' }}">
+    <input type="hidden" name="basal_temp_delta"
+        value="{{ existing.basal_temp_delta if existing and existing.basal_temp_delta is not none else '' }}">
+    <input type="hidden" name="steps"
+        value="{{ existing.steps if existing and existing.steps is not none else '' }}">
+    <input type="hidden" name="sun_exposure_min"
+        value="{{ existing.sun_exposure_min if existing and existing.sun_exposure_min is not none else '' }}">
+    <input type="hidden" name="stayed_indoors"
+        value="{{ '1' if existing and existing.stayed_indoors else '' }}">
+    <input type="hidden" name="uv_protection_level"
+        value="{{ existing.uv_protection_level if existing and existing.uv_protection_level else '' }}">
+    {% endif %}
+
+    <!-- Symptom flags -->
+    <div class="card">
+        <div class="card-title">symptoms</div>
+
+        {% if quick_mode %}
+        <div class="toggle-group">
+            {% for sym_key, sym_label, sym_id, sym_class in [
+                ('neurological', 'neurological', 'tog-neuro',     'neuro'),
+                ('cognitive',    'cognitive',    'tog-cognitive',  'cognitive'),
+                ('musculature',  'musculature',  'tog-muscle',     'muscle'),
+                ('migraine',     'migraine',     'tog-migraine',   'migraine'),
+                ('pulmonary',    'pulmonary',    'tog-pulmonary',  'pulmonary'),
+                ('rheumatic',    'rheumatic',    'tog-rheum',      'rheum'),
+                ('dermatological','dermatological','tog-derm',     'derm'),
+                ('gastro',       'gastro',       'tog-gastro',     'gastro'),
+                ('mucosal',      'mucosal',      'tog-mucosal',    'mucosal'),
+            ] %}
+            <div class="toggle-item {{ sym_class }}">
+                <input type="checkbox" name="{{ sym_key }}" id="{{ sym_id }}"
+                    {% if existing and existing[sym_key] %}checked{% endif %}>
+                <label class="toggle-label" for="{{ sym_id }}"><span>{{ sym_label }}</span></label>
+            </div>
+            {% endfor %}
+        </div>
+        <input type="hidden" name="neuro_notes"
+            value="{{ existing.neuro_notes if existing and existing.neuro_notes else '' }}">
+        <input type="hidden" name="cognitive_notes"
+            value="{{ existing.cognitive_notes if existing and existing.cognitive_notes else '' }}">
+        <input type="hidden" name="musculature_notes"
+            value="{{ existing.musculature_notes if existing and existing.musculature_notes else '' }}">
+        <input type="hidden" name="migraine_notes"
+            value="{{ existing.migraine_notes if existing and existing.migraine_notes else '' }}">
+        <input type="hidden" name="pulmonary_notes"
+            value="{{ existing.pulmonary_notes if existing and existing.pulmonary_notes else '' }}">
+        <input type="hidden" name="rheumatic_notes"
+            value="{{ existing.rheumatic_notes if existing and existing.rheumatic_notes else '' }}">
+        <input type="hidden" name="derm_notes"
+            value="{{ existing.derm_notes if existing and existing.derm_notes else '' }}">
+        <input type="hidden" name="gastro_notes"
+            value="{{ existing.gastro_notes if existing and existing.gastro_notes else '' }}">
+        <input type="hidden" name="mucosal_notes"
+            value="{{ existing.mucosal_notes if existing and existing.mucosal_notes else '' }}">
+
+        {% else %}
+        <p style="font-size:0.8rem; color:var(--text-muted); margin-bottom:var(--space-md);">
+            tap to flag — note fields appear when flagged
+        </p>
+        <div class="toggle-group">
+
+            <div class="toggle-item neuro">
+                <input type="checkbox" name="neurological" id="tog-neuro"
+                    {% if existing and existing.neurological %}checked{% endif %}
+                    onchange="toggleNotes(this, 'notes-neuro')">
+                <label class="toggle-label" for="tog-neuro">
+                    <span>neurological</span>
+                </label>
+                <div class="notes-expand {% if existing and existing.neuro_notes %}visible{% endif %}"
+                     id="notes-neuro">
+                    <textarea name="neuro_notes" placeholder="numbness, tingling, vision, twitching…"
+                        >{{ existing.neuro_notes if existing and existing.neuro_notes else '' }}</textarea>
+                </div>
+            </div>
+
+            <div class="toggle-item cognitive">
+                <input type="checkbox" name="cognitive" id="tog-cognitive"
+                    {% if existing and existing.cognitive %}checked{% endif %}
+                    onchange="toggleNotes(this, 'notes-cognitive')">
+                <label class="toggle-label" for="tog-cognitive">
+                    <span>cognitive</span>
+                </label>
+                <div class="notes-expand {% if existing and existing.cognitive_notes %}visible{% endif %}"
+                     id="notes-cognitive">
+                    <textarea name="cognitive_notes" placeholder="brain fog, word loss, slow recall…"
+                        >{{ existing.cognitive_notes if existing and existing.cognitive_notes else '' }}</textarea>
+                </div>
+            </div>
+
+            <div class="toggle-item muscle">
+                <input type="checkbox" name="musculature" id="tog-muscle"
+                    {% if existing and existing.musculature %}checked{% endif %}
+                    onchange="toggleNotes(this, 'notes-muscle')">
+                <label class="toggle-label" for="tog-muscle">
+                    <span>musculature</span>
+                </label>
+                <div class="notes-expand {% if existing and existing.musculature_notes %}visible{% endif %}"
+                     id="notes-muscle">
+                    <textarea name="musculature_notes" placeholder="cramps, joint pain, stiffness, location…"
+                        >{{ existing.musculature_notes if existing and existing.musculature_notes else '' }}</textarea>
+                </div>
+            </div>
+
+            <div class="toggle-item migraine">
+                <input type="checkbox" name="migraine" id="tog-migraine"
+                    {% if existing and existing.migraine %}checked{% endif %}
+                    onchange="toggleNotes(this, 'notes-migraine')">
+                <label class="toggle-label" for="tog-migraine">
+                    <span>migraine</span>
+                </label>
+                <div class="notes-expand {% if existing and existing.migraine_notes %}visible{% endif %}"
+                     id="notes-migraine">
+                    <textarea name="migraine_notes" placeholder="severity, location, duration, triggers…"
+                        >{{ existing.migraine_notes if existing and existing.migraine_notes else '' }}</textarea>
+                </div>
+            </div>
+
+            <div class="toggle-item pulmonary">
+                <input type="checkbox" name="pulmonary" id="tog-pulmonary"
+                    {% if existing and existing.pulmonary %}checked{% endif %}
+                    onchange="toggleNotes(this, 'notes-pulmonary')">
+                <label class="toggle-label" for="tog-pulmonary">
+                    <span>pulmonary</span>
+                </label>
+                <div class="notes-expand {% if existing and existing.pulmonary_notes %}visible{% endif %}"
+                     id="notes-pulmonary">
+                    <textarea name="pulmonary_notes" placeholder="air hunger, chest pain, severity…"
+                        >{{ existing.pulmonary_notes if existing and existing.pulmonary_notes else '' }}</textarea>
+                </div>
+            </div>
+
+            <div class="toggle-item rheum">
+                <input type="checkbox" name="rheumatic" id="tog-rheum"
+                    {% if existing and existing.rheumatic %}checked{% endif %}
+                    onchange="toggleNotes(this, 'notes-rheum')">
+                <label class="toggle-label" for="tog-rheum">
+                    <span>rheumatic</span>
+                </label>
+                <div class="notes-expand {% if existing and existing.rheumatic_notes %}visible{% endif %}"
+                     id="notes-rheum">
+                    <textarea name="rheumatic_notes" placeholder="joint pain, stiffness, swelling..."
+                        >{{ existing.rheumatic_notes if existing and existing.rheumatic_notes else '' }}</textarea>
+                </div>
+            </div>
+
+            <div class="toggle-item derm">
+                <input type="checkbox" name="dermatological" id="tog-derm"
+                    {% if existing and existing.dermatological %}checked{% endif %}
+                    onchange="toggleNotes(this, 'notes-derm')">
+                <label class="toggle-label" for="tog-derm">
+                    <span>dermatological</span>
+                </label>
+                <div class="notes-expand {% if existing and existing.derm_notes %}visible{% endif %}"
+                     id="notes-derm">
+                    <textarea name="derm_notes" placeholder="location, appearance, livedo, rash type…"
+                        >{{ existing.derm_notes if existing and existing.derm_notes else '' }}</textarea>
+                </div>
+            </div>
+
+            <div class="toggle-item gastro">
+                <input type="checkbox" name="gastro" id="tog-gastro"
+                    {% if existing and existing.gastro %}checked{% endif %}
+                    onchange="toggleNotes(this, 'notes-gastro')">
+                <label class="toggle-label" for="tog-gastro">
+                    <span>gastro</span>
+                </label>
+                <div class="notes-expand {% if existing and existing.gastro_notes %}visible{% endif %}"
+                     id="notes-gastro">
+                    <textarea name="gastro_notes" placeholder="abdominal pain, bloating, diarrhea..."
+                        >{{ existing.gastro_notes if existing and existing.gastro_notes else '' }}</textarea>
+                </div>
+            </div>
+            <div class="toggle-item mucosal">
+                <input type="checkbox" name="mucosal" id="tog-mucosal"
+                    {% if existing and existing.mucosal %}checked{% endif %}
+                    onchange="toggleNotes(this, 'notes-mucosal')">
+                <label class="toggle-label" for="tog-mucosal">
+                    <span>mucosal</span>
+                </label>
+                <div class="notes-expand {% if existing and existing.mucosal_notes %}visible{% endif %}"
+                     id="notes-mucosal">
+                    <textarea name="mucosal_notes" placeholder="eye dryness, irritation, dry mouth, cracked lips..."
+                        >{{ existing.mucosal_notes if existing and existing.mucosal_notes else '' }}</textarea>
+                </div>
+            </div>
+        </div>
+        {% endif %}
+    </div>
+
+    <!-- Scales -->
+    <div class="card">
+        <div class="card-title">scales</div>
+
+        <div class="form-group">
+            <label>pain <span style="color:var(--text-muted)">(0 = none, 10 = passing out)</span></label>
+            <div class="range-row">
+                <input type="range" name="pain_scale" min="0" max="10" step="0.5"
+                    value="{{ existing.pain_scale if existing and existing.pain_scale is not none else 0 }}"
+                    oninput="this.nextElementSibling.textContent = this.value">
+                <span class="range-value">
+                    {{ existing.pain_scale if existing and existing.pain_scale is not none else 0 }}
+                </span>
+            </div>
+        </div>
+
+        <div class="form-group">
+            <label>fatigue <span style="color:var(--text-muted)">(0 = wired, 10 = comatose)</span></label>
+            <div class="range-row">
+                <input type="range" name="fatigue_scale" min="0" max="10" step="0.5"
+                    value="{{ existing.fatigue_scale if existing and existing.fatigue_scale is not none else 0 }}"
+                    oninput="this.nextElementSibling.textContent = this.value">
+                <span class="range-value">
+                    {{ existing.fatigue_scale if existing and existing.fatigue_scale is not none else 0 }}
+                </span>
+            </div>
+        </div>
+
+        <div class="form-group">
+            <label>emotional state <span style="color:var(--text-muted)">(0 = crisis, 10 = excellent)</span></label>
+            <div class="range-row">
+                <input type="range" name="emotional_state" min="0" max="10" step="0.5"
+                    value="{{ existing.emotional_state if existing and existing.emotional_state is not none else 5 }}"
+                    oninput="this.nextElementSibling.textContent = this.value">
+                <span class="range-value">
+                    {{ existing.emotional_state if existing and existing.emotional_state is not none else 5 }}
+                </span>
+            </div>
+            {% if not quick_mode %}
+            <div class="notes-expand visible" style="margin-top: var(--space-sm);">
+                <textarea name="emotional_notes" placeholder="context for the number…"
+                    >{{ existing.emotional_notes if existing and existing.emotional_notes else '' }}</textarea>
+            </div>
+            {% else %}
+            <input type="hidden" name="emotional_notes"
+                value="{{ existing.emotional_notes if existing and existing.emotional_notes else '' }}">
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- Flare flags -->
+    <div class="card">
+        <div class="card-title">flare flags</div>
+
+        <div class="toggle-group">
+            <div class="toggle-item muscle">
+                <input type="checkbox" name="strike_physical" id="tog-strike1"
+                    {% if existing and existing.strike_physical %}checked{% endif %}>
+                <label class="toggle-label" for="tog-strike1">
+                    strike 1: physical / cognitive load
+                </label>
+            </div>
+
+            <div class="toggle-item derm">
+                <input type="checkbox" name="strike_environmental" id="tog-strike2"
+                    {% if existing and existing.strike_environmental %}checked{% endif %}>
+                <label class="toggle-label" for="tog-strike2">
+                    strike 2: UV / heat / allergen
+                </label>
+            </div>
+
+            <div class="toggle-item migraine">
+                <input type="checkbox" name="flare_occurred" id="tog-flare"
+                    {% if existing and existing.flare_occurred %}checked{% endif %}
+                    onchange="document.getElementById('flare-severity-row').style.display = this.checked ? 'flex' : 'none';">
+                <label class="toggle-label" for="tog-flare">
+                    flare occurred
+                </label>
+            </div>
+            <div id="flare-severity-row"
+                 style="display:{% if existing and existing.flare_occurred %}flex{% else %}none{% endif %};
+                        margin-left:2rem; gap:0.75rem; margin-top:4px;">
+                <label style="font-size:0.8rem; color:var(--text-secondary);">
+                    <input type="radio" name="flare_severity" value="minor"
+                        {% if existing and existing.flare_severity == 'minor' %}checked{% endif %}>
+                    minor (rough day)
+                </label>
+                <label style="font-size:0.8rem; color:var(--text-secondary);">
+                    <input type="radio" name="flare_severity" value="major"
+                        {% if not existing or not existing.flare_severity or existing.flare_severity == 'major' %}checked{% endif %}>
+                    major (significant flare)
+                </label>
+                <label style="font-size:0.8rem; color:var(--text-secondary);">
+                    <input type="radio" name="flare_severity" value="er_visit"
+                        {% if existing and existing.flare_severity == 'er_visit' %}checked{% endif %}>
+                    ER visit / urgent care
+                </label>
+            </div>
+        </div>
+    </div>
+
+    <!-- General notes -->
+    {% if not quick_mode %}
+    <div class="card">
+        <div class="card-title">notes</div>
+        <textarea name="notes" placeholder="anything else worth recording…"
+            style="min-height: 120px;"
+            >{{ existing.notes if existing and existing.notes else '' }}</textarea>
+    </div>
+    {% else %}
+    <input type="hidden" name="notes"
+        value="{{ existing.notes if existing and existing.notes else '' }}">
+    {% endif %}
+
+    {% if track_cycle %}
+    <div class="card">
+        <div class="card-title">cycle</div>
+        {% if quick_mode %}
+        <div class="form-group">
+            <label>period today</label>
+            <select name="period_flow">
+                <option value="">— none —</option>
+                <option value="spotting"
+                    {% if existing and existing.period_flow == 'spotting' %}selected{% endif %}>
+                    spotting</option>
+                <option value="light"
+                    {% if existing and existing.period_flow == 'light' %}selected{% endif %}>
+                    light</option>
+                <option value="medium"
+                    {% if existing and existing.period_flow == 'medium' %}selected{% endif %}>
+                    medium</option>
+                <option value="heavy"
+                    {% if existing and existing.period_flow == 'heavy' %}selected{% endif %}>
+                    heavy</option>
+            </select>
+        </div>
+        <input type="hidden" name="cramping"
+            value="{{ existing.cramping if existing and existing.cramping else '' }}">
+        <input type="hidden" name="cycle_notes"
+            value="{{ existing.cycle_notes if existing and existing.cycle_notes else '' }}">
+        {% else %}
+        <div class="form-grid" style="grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));">
+            <div class="form-group">
+                <label>period today</label>
+                <select name="period_flow">
+                    <option value="">— none —</option>
+                    <option value="spotting"
+                        {% if existing and existing.period_flow == 'spotting' %}selected{% endif %}>
+                        spotting</option>
+                    <option value="light"
+                        {% if existing and existing.period_flow == 'light' %}selected{% endif %}>
+                        light</option>
+                    <option value="medium"
+                        {% if existing and existing.period_flow == 'medium' %}selected{% endif %}>
+                        medium</option>
+                    <option value="heavy"
+                        {% if existing and existing.period_flow == 'heavy' %}selected{% endif %}>
+                        heavy</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label>cramping</label>
+                <select name="cramping">
+                    <option value="">— none —</option>
+                    <option value="mild"
+                        {% if existing and existing.cramping == 'mild' %}selected{% endif %}>
+                        mild</option>
+                    <option value="moderate"
+                        {% if existing and existing.cramping == 'moderate' %}selected{% endif %}>
+                        moderate</option>
+                    <option value="severe"
+                        {% if existing and existing.cramping == 'severe' %}selected{% endif %}>
+                        severe</option>
+                </select>
+            </div>
+            <div class="form-group" style="grid-column: 1 / -1;">
+                <label>cycle notes</label>
+                <textarea name="cycle_notes" placeholder="anything worth noting…"
+                    >{{ existing.cycle_notes if existing and existing.cycle_notes else '' }}</textarea>
+            </div>
+        </div>
+        {% endif %}
+    </div>
+    {% endif %}
+
+    <button type="submit" class="btn btn-primary btn-full">
+        save entry
+    </button>
+
+</form>
+
+{% if todays_doses %}
+<div class="card" style="margin-top: var(--space-lg);">
+    <div class="card-title">today's doses</div>
+    <p style="font-size:0.8rem; color:var(--text-muted); margin-bottom:var(--space-md);">
+        scheduled medication reminders for {{ entry_date }}
+    </p>
+    {% for dose in todays_doses %}
+    <div style="display:flex; align-items:center; gap:var(--space-md); padding:var(--space-sm) 0;
+                border-bottom:1px solid var(--border-subtle);
+                {% if dose.taken %}opacity:0.5;{% endif %}">
+        <div style="flex:0 0 auto; min-width:80px; font-family:var(--font-mono); font-size:0.85rem; color:var(--text-muted);">
+            {{ dose.scheduled_datetime[11:16] }}
+        </div>
+        <div style="flex:1;">
+            <div style="{% if dose.taken %}text-decoration:line-through; color:var(--text-muted);{% else %}color:var(--text-primary);{% endif %} font-size:0.9rem;">
+                {{ dose.dose_label }}
+            </div>
+            <div style="font-size:0.75rem; color:var(--text-muted);">{{ dose.drug_name }}</div>
+        </div>
+        <div style="flex:0 0 auto;">
+            {% if dose.taken %}
+            <span style="font-size:0.8rem; color:var(--color-accent);">
+                ✓ taken {{ dose.taken_at[11:16] if dose.taken_at else '' }}
+            </span>
+            {% else %}
+            <form method="POST" action="{{ url_for('dose_take', dose_id=dose.id) }}" style="display:inline;">
+                <input type="hidden" name="return_url" value="{{ request.url }}">
+                <button type="submit" class="btn btn-secondary"
+                        style="padding:3px 12px; font-size:0.8rem;">
+                    mark taken
+                </button>
+            </form>
+            {% endif %}
+        </div>
+    </div>
+    {% endfor %}
+</div>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+    function toggleNotes(checkbox, notesId) {
+        const notes = document.getElementById(notesId);
+        if (checkbox.checked) {
+            notes.classList.add('visible');
+            const textarea = notes.querySelector('textarea');
+            if (textarea) textarea.focus();
+        } else {
+            notes.classList.remove('visible');
+        }
+    }
+
+    // Update all range display values on page load
+    document.querySelectorAll('input[type="range"]').forEach(function(input) {
+        const display = input.nextElementSibling;
+        if (display) display.textContent = input.value;
+    });
+
+    // Stayed indoors toggle
+    const indoorsBox = document.getElementById('stayed-indoors');
+    const sunFields = document.getElementById('sun-fields');
+    const sunInput = document.getElementById('sun-exposure-min');
+    const protSelect = document.getElementById('uv-protection-level');
+
+    function updateIndoors() {
+        if (!indoorsBox || !sunFields) return;
+        if (indoorsBox.checked) {
+            sunFields.style.opacity = '0.4';
+            sunFields.style.pointerEvents = 'none';
+            if (sunInput) sunInput.value = '0';
+            if (protSelect) protSelect.value = 'indoors_only';
+        } else {
+            sunFields.style.opacity = '1';
+            sunFields.style.pointerEvents = 'auto';
+        }
+    }
+    if (indoorsBox) {
+        indoorsBox.addEventListener('change', updateIndoors);
+        updateIndoors();
+    }
+
+    // Manual UV save
+    const saveBtn = document.getElementById('save-manual-uv');
+    if (saveBtn) {
+        saveBtn.addEventListener('click', async function() {
+            const m = parseFloat(document.getElementById('manual-uv-morning').value) || 0;
+            const n = parseFloat(document.getElementById('manual-uv-noon').value) || 0;
+            const e = parseFloat(document.getElementById('manual-uv-evening').value) || 0;
+            const status = document.getElementById('manual-uv-status');
+
+            try {
+                const resp = await fetch('{{ url_for("uv_manual") }}', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': '{{ csrf_token() }}'
+                    },
+                    body: JSON.stringify({
+                        date: '{{ entry_date }}',
+                        uv_morning: m,
+                        uv_noon: n,
+                        uv_evening: e
+                    })
+                });
+                if (resp.ok) {
+                    status.textContent = 'saved';
+                    status.style.color = 'var(--color-accent)';
+                    // Update UV strip if it exists
+                    const mv = document.getElementById('uv-morning-val');
+                    const nv = document.getElementById('uv-noon-val');
+                    const ev = document.getElementById('uv-evening-val');
+                    const sv = document.getElementById('uv-source-val');
+                    if (mv) mv.textContent = m.toFixed(1);
+                    if (nv) nv.textContent = n.toFixed(1);
+                    if (ev) ev.textContent = e.toFixed(1);
+                    if (sv) sv.textContent = 'manual';
+                } else {
+                    status.textContent = 'error saving';
+                    status.style.color = 'var(--color-danger)';
+                }
+            } catch (err) {
+                status.textContent = 'network error';
+                status.style.color = 'var(--color-danger)';
+            }
+        });
+    }
+
+    // ============================================================
+    // Recent HealthKit Syncs panel - relative timestamps + 30s polling
+    // ============================================================
+    (function() {
+        const panel = document.getElementById('syncPanel');
+        if (!panel) return;
+        const body = document.getElementById('syncPanelBody');
+        const statusEl = document.getElementById('syncPanelStatus');
+        const POLL_MS = 30000;
+
+        function relativeTime(iso) {
+            const then = new Date(iso);
+            if (isNaN(then.getTime())) return iso;
+            const diffSec = Math.floor((Date.now() - then.getTime()) / 1000);
+            if (diffSec < 60)        return diffSec + ' sec ago';
+            if (diffSec < 3600)      return Math.floor(diffSec / 60) + ' min ago';
+            if (diffSec < 86400)     return Math.floor(diffSec / 3600) + ' hour' + (diffSec >= 7200 ? 's' : '') + ' ago';
+            if (diffSec < 172800)    return 'yesterday';
+            return Math.floor(diffSec / 86400) + ' days ago';
+        }
+
+        function formatField(name, val) {
+            if (val == null) return name;
+            switch (name) {
+                case 'steps':              return 'steps ' + Math.round(val).toLocaleString();
+                case 'hrv':                return 'hrv ' + val + 'ms';
+                case 'hrv_rmssd':          return 'rmssd ' + val + 'ms';
+                case 'resting_heart_rate': return 'rhr ' + val + 'bpm';
+                case 'spo2':               return 'spo2 ' + val + '%';
+                case 'basal_temp_delta':   return 'temp ' + val + '\u00b0F';
+                case 'respiratory_rate':   return 'resp ' + val;
+                case 'sun_exposure_min':   return 'daylight ' + Math.round(val) + 'min';
+                default:                   return name + ' ' + val;
+            }
+        }
+
+        function refreshRelativeTimes() {
+            panel.querySelectorAll('.sync-event').forEach(function(el, idx) {
+                const iso = el.getAttribute('data-posted-at');
+                const span = el.querySelector('.sync-relative');
+                if (span && iso) {
+                    span.textContent = relativeTime(iso);
+                    span.title = iso;
+                }
+                if (idx === 0) {
+                    const pill = el.querySelector('.sync-new-pill');
+                    if (pill && iso) {
+                        const ageSec = (Date.now() - new Date(iso).getTime()) / 1000;
+                        pill.style.display = (ageSec < 600) ? 'inline-block' : 'none';
+                    }
+                }
+            });
+        }
+
+        function buildEmptyState() {
+            const empty = document.createElement('div');
+            empty.id = 'syncPanelEmpty';
+            empty.style.cssText = 'padding: var(--space-sm) 0; font-size:0.85rem; color:var(--text-muted);';
+            empty.textContent = 'No HealthKit syncs yet. Check that iOS HealthSync is configured and has permission to read Apple Health.';
+            return empty;
+        }
+
+        function renderEvents(events) {
+            if (!events || events.length === 0) {
+                body.replaceChildren(buildEmptyState());
+                return;
+            }
+            const frag = document.createDocumentFragment();
+            events.forEach(function(ev, idx) {
+                const wrap = document.createElement('div');
+                wrap.className = 'sync-event';
+                wrap.setAttribute('data-posted-at', ev.posted_at);
+                wrap.style.cssText = 'padding: var(--space-sm) 0;' +
+                    (idx < events.length - 1 ? ' border-bottom: 1px solid var(--border-subtle);' : '');
+
+                const headRow = document.createElement('div');
+                headRow.style.cssText = 'display:flex; align-items:center; gap:var(--space-sm); flex-wrap:wrap;';
+
+                const rel = document.createElement('span');
+                rel.className = 'sync-relative';
+                rel.title = ev.posted_at;
+                rel.style.cssText = 'font-size:0.85rem; color:var(--text-primary); font-weight:600;';
+                rel.textContent = relativeTime(ev.posted_at);
+                headRow.appendChild(rel);
+
+                const forDate = document.createElement('span');
+                forDate.style.cssText = 'font-size:0.7rem; color:var(--text-muted);';
+                forDate.textContent = 'for ' + ev.metric_date;
+                headRow.appendChild(forDate);
+
+                if (idx === 0) {
+                    const pill = document.createElement('span');
+                    pill.className = 'sync-new-pill';
+                    const ageSec = (Date.now() - new Date(ev.posted_at).getTime()) / 1000;
+                    pill.style.cssText = 'font-size:0.6rem; padding: 2px 6px; background: var(--color-accent);' +
+                        ' color: var(--bg-base); border-radius: 10px; font-weight:700; letter-spacing:0.05em;' +
+                        ' display:' + (ageSec < 600 ? 'inline-block' : 'none') + ';';
+                    pill.textContent = 'NEW';
+                    headRow.appendChild(pill);
+                }
+                wrap.appendChild(headRow);
+
+                const fieldsRow = document.createElement('div');
+                fieldsRow.className = 'sync-fields';
+                fieldsRow.style.cssText = 'font-size:0.75rem; color:var(--text-secondary); margin-top:4px;' +
+                    ' font-family: var(--font-mono); word-break: break-word;';
+                const parts = (ev.fields_updated || []).map(function(f) {
+                    return formatField(f, ev.payload ? ev.payload[f] : null);
+                });
+                fieldsRow.textContent = parts.join(' \u00b7 ');
+                wrap.appendChild(fieldsRow);
+
+                frag.appendChild(wrap);
+            });
+            body.replaceChildren(frag);
+        }
+
+        // Form field names that the iOS sync can populate
+        const SYNC_FIELDS = ['steps', 'hrv', 'hrv_rmssd', 'resting_heart_rate',
+                             'spo2', 'respiratory_rate', 'basal_temp_delta',
+                             'sun_exposure_min'];
+
+        function fillEmptyFormFields(event) {
+            if (!event || !event.payload) return;
+            SYNC_FIELDS.forEach(function(name) {
+                const input = document.querySelector('input[name="' + name + '"]:not([type="hidden"])');
+                if (!input) return;
+                if (input.value !== '') return;  // never clobber user input
+                const v = event.payload[name];
+                if (v == null) return;
+                input.value = v;
+                // Subtle visual cue that this was auto-filled
+                input.style.backgroundColor = 'rgba(74,184,160,0.08)';
+                setTimeout(function() { input.style.backgroundColor = ''; }, 2000);
+            });
+        }
+
+        async function poll() {
+            try {
+                const res = await fetch('/api/health-sync/recent', { credentials: 'same-origin' });
+                if (!res.ok) throw new Error('http ' + res.status);
+                const json = await res.json();
+                if (json.ok) {
+                    const events = json.events || [];
+                    renderEvents(events);
+                    if (events.length > 0) fillEmptyFormFields(events[0]);
+                    statusEl.textContent = '';
+                } else {
+                    statusEl.textContent = 'couldn\'t load sync history';
+                }
+            } catch (err) {
+                statusEl.textContent = 'couldn\'t load sync history';
+            }
+        }
+
+        refreshRelativeTimes();
+        setInterval(refreshRelativeTimes, 30000);
+        setInterval(poll, POLL_MS);
+    })();
+</script>
+
+<style>
+.date-nav {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-md);
+    margin-bottom: var(--space-lg);
+    padding: var(--space-md);
+    background: var(--bg-elevated);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-md);
+}
+
+.date-nav-btn {
+    display: inline-flex;
+    align-items: center;
+    padding: var(--space-xs) var(--space-md);
+    background: transparent;
+    border: 1px solid var(--border-md);
+    border-color: var(--border-md);
+    border-radius: var(--radius-sm);
+    color: var(--text-primary);
+    text-decoration: none;
+    font-size: 0.9rem;
+    transition: background 0.15s, border-color 0.15s;
+}
+
+.date-nav-btn:hover {
+    background: var(--bg-card);
+    border-color: var(--color-accent);
+}
+
+.date-nav-btn.disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+    pointer-events: none;
+}
+
+.date-nav-center {
+    display: flex;
+    align-items: center;
+    gap: var(--space-sm);
+}
+
+.btn-sm {
+    padding: 4px 12px;
+    font-size: 0.85rem;
+}
+
+@media (max-width: 600px) {
+    .date-nav {
+        flex-direction: column;
+        gap: var(--space-sm);
+    }
+    .date-nav-center {
+        order: -1;
+        width: 100%;
+        justify-content: center;
+    }
+}
+</style>
+{% endblock %}

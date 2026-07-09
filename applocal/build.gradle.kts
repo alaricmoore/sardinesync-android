@@ -37,14 +37,24 @@ android {
 
 chaquopy {
     defaultConfig {
-        // 3.13, not Fedora's 3.14: Chaquopy's wheel repo doesn't carry native
-        // wheels (MarkupSafe today; numpy/pandas/scipy at milestone 2) for
-        // 3.14 yet. Build machine provides 3.13 via `uv python install 3.13`.
-        version = "3.13"
-        // No buildPython override: Chaquopy finds `python3.13` on PATH
-        // (~/.local/bin shim from uv locally; setup-python or similar in CI).
+        // 3.10, not newer: the only Python with the FULL native-wheel set in
+        // Chaquopy's repo (scipy stops at cp310; numpy/bcrypt reach cp313).
+        // scipy powers the lag-correlation and forecast-accuracy pages, so it
+        // wins. Build machine provides `python3.10` on PATH via
+        // `uv python install 3.10` (or setup-python in CI).
+        version = "3.10"
         pip {
+            // Web-app dependencies only — analysis-script extras like pandas
+            // are NOT used by app.py and stay out of the APK.
             install("flask")
+            install("flask-login")
+            install("flask-wtf")
+            install("bcrypt")
+            install("apscheduler")   // imported at module top; never started (SARDINE_EMBEDDED)
+            install("requests")
+            install("numpy")
+            install("scipy")
+            install("pypdf")
         }
     }
 }

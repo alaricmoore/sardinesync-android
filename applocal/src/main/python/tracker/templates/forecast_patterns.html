@@ -1,0 +1,463 @@
+{% extends "base.html" %}
+
+{% block title %}pre-flare patterns — sardinetracker{% endblock %}
+
+{% block head %}
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>pre-flare pattern analysis</h1>
+    <p class="page-subtitle">
+        what do the 3 days before severe events look like?
+    </p>
+</div>
+
+<div style="display:flex; gap:var(--space-md); align-items:center; margin-bottom:var(--space-lg);">
+    <a href="{{ url_for('forecast') }}" class="btn btn-secondary">
+        back to forecast
+    </a>
+    <a href="{{ url_for('timeline') }}" class="btn btn-secondary">
+        ← back to model
+    </a>
+    <a href="{{ url_for('forecast_accuracy') }}" class="btn btn-secondary">
+        accuracy
+    </a>
+</div>
+
+{% if not has_data %}
+<div class="card">
+    <p style="color:var(--text-muted);">Not enough data yet. Log daily entries and label flare severity to enable pattern analysis.</p>
+</div>
+{% else %}
+
+<!-- Flare counts summary -->
+<div class="card" style="margin-bottom:var(--space-xl);">
+    <div class="card-title">labeled flare events</div>
+    <div style="display:flex; gap:var(--space-xl); flex-wrap:wrap;">
+        <div style="text-align:center;">
+            <div style="font-size:1.5rem; font-weight:600; color:#ff4444;">{{ flare_counts.er_visit }}</div>
+            <div style="font-size:0.85rem; color:var(--text-muted);">ER visits</div>
+        </div>
+        <div style="text-align:center;">
+            <div style="font-size:1.5rem; font-weight:600; color:var(--color-danger);">{{ flare_counts.major }}</div>
+            <div style="font-size:0.85rem; color:var(--text-muted);">major flares</div>
+        </div>
+        <div style="text-align:center;">
+            <div style="font-size:1.5rem; font-weight:600; color:var(--color-warning);">{{ flare_counts.minor }}</div>
+            <div style="font-size:0.85rem; color:var(--text-muted);">minor flares</div>
+        </div>
+        <div style="text-align:center;">
+            <div style="font-size:1.5rem; font-weight:600; color:var(--text-muted);">{{ flare_counts.unlabeled }}</div>
+            <div style="font-size:0.85rem; color:var(--text-muted);">unlabeled</div>
+        </div>
+    </div>
+</div>
+
+<!-- Comparison table -->
+{% set tiers = [
+    ('er_visit', 'ER visits', '#ff4444'),
+    ('major', 'Major flares', 'var(--color-danger)'),
+    ('minor', 'Minor flares', 'var(--color-warning)'),
+    ('baseline', 'Baseline (no flare)', 'var(--text-muted)')
+] %}
+
+<div class="card" style="margin-bottom:var(--space-xl);">
+    <div class="card-title">biometrics in the 3 days before events</div>
+    <p style="font-size:0.8rem; color:var(--text-muted); margin-bottom:var(--space-md);">
+        Average values in the 3-day window preceding each type of event, compared to baseline days.
+    </p>
+    <div style="overflow-x:auto;">
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th></th>
+                    {% for key, label, color in tiers %}
+                        {% if profiles[key] %}
+                        <th style="text-align:center; color:{{ color }};">{{ label }}<br>
+                            <span style="font-weight:normal; font-size:0.75rem;">({{ profiles[key].n_flares }} events)</span>
+                        </th>
+                        {% endif %}
+                    {% endfor %}
+                </tr>
+            </thead>
+            <tbody>
+                {% set metrics = [
+                    ('uv_index_avg', 'UV index (weighted)'),
+                    ('uv_dose_avg', 'UV dose'),
+                    ('fatigue_avg', 'Fatigue (0-10)'),
+                    ('pain_avg', 'Pain (0-10)'),
+                    ('hrv_avg', 'HRV / SDNN'),
+                    ('rmssd_avg', 'RMSSD'),
+                    ('rhr_avg', 'Resting HR'),
+                    ('spo2_avg', 'SpO2 (%)'),
+                    ('resp_rate_avg', 'Respiratory rate'),
+                    ('bbt_avg', 'BBT delta'),
+                    ('sleep_avg', 'Sleep (hrs)'),
+                    ('steps_avg', 'Steps'),
+                ] %}
+                {% for metric_key, metric_label in metrics %}
+                <tr>
+                    <td style="font-size:0.85rem; color:var(--text-secondary);">{{ metric_label }}</td>
+                    {% for key, label, color in tiers %}
+                        {% if profiles[key] %}
+                        <td style="text-align:center;">
+                            {% set val = profiles[key][metric_key] %}
+                            {% if val is not none %}
+                                {% set baseline_val = profiles['baseline'][metric_key] if profiles['baseline'] else none %}
+                                {% if baseline_val is not none and key != 'baseline' %}
+                                    {% set diff = val - baseline_val %}
+                                    <span style="font-weight:600;">{{ val }}</span>
+                                    {% if diff > 0 %}
+                                        <span style="font-size:0.75rem; color:var(--color-danger);">+{{ "%.1f"|format(diff) }}</span>
+                                    {% elif diff < 0 %}
+                                        <span style="font-size:0.75rem; color:var(--color-success);">{{ "%.1f"|format(diff) }}</span>
+                                    {% endif %}
+                                {% else %}
+                                    <span style="font-weight:600;">{{ val }}</span>
+                                {% endif %}
+                            {% else %}
+                                <span style="color:var(--text-muted);">--</span>
+                            {% endif %}
+                        </td>
+                        {% endif %}
+                    {% endfor %}
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<!-- Fatigue/Pain trajectory -->
+{% for key, label, color in tiers %}
+{% if profiles[key] and key != 'baseline' %}
+{% set p = profiles[key] %}
+{% if p.fatigue_trajectory.day3 is not none or p.pain_trajectory.day3 is not none %}
+<div class="card" style="margin-bottom:var(--space-md); border-left:4px solid {{ color }};">
+    <div class="card-title" style="color:{{ color }};">{{ label }} — trajectory</div>
+    <div style="display:flex; gap:var(--space-xl); flex-wrap:wrap; font-size:0.9rem;">
+        {% if p.fatigue_trajectory.day3 is not none and p.fatigue_trajectory.day1 is not none %}
+        <div>
+            <span style="color:var(--text-muted);">fatigue:</span>
+            {{ p.fatigue_trajectory.day3 }} (3 days out)
+            &rarr; {{ p.fatigue_trajectory.day1 }} (day before)
+            {% if p.fatigue_trajectory.day1 > p.fatigue_trajectory.day3 %}
+                <span style="color:var(--color-danger);">rising</span>
+            {% elif p.fatigue_trajectory.day1 < p.fatigue_trajectory.day3 %}
+                <span style="color:var(--color-success);">falling</span>
+            {% else %}
+                <span style="color:var(--text-muted);">stable</span>
+            {% endif %}
+        </div>
+        {% endif %}
+        {% if p.pain_trajectory.day3 is not none and p.pain_trajectory.day1 is not none %}
+        <div>
+            <span style="color:var(--text-muted);">pain:</span>
+            {{ p.pain_trajectory.day3 }} (3 days out)
+            &rarr; {{ p.pain_trajectory.day1 }} (day before)
+            {% if p.pain_trajectory.day1 > p.pain_trajectory.day3 %}
+                <span style="color:var(--color-danger);">rising</span>
+            {% elif p.pain_trajectory.day1 < p.pain_trajectory.day3 %}
+                <span style="color:var(--color-success);">falling</span>
+            {% else %}
+                <span style="color:var(--text-muted);">stable</span>
+            {% endif %}
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endif %}
+{% endif %}
+{% endfor %}
+
+<!-- Symptom frequency comparison -->
+<div class="card" style="margin-bottom:var(--space-xl);">
+    <div class="card-title">symptom frequency in pre-flare windows</div>
+    <p style="font-size:0.8rem; color:var(--text-muted); margin-bottom:var(--space-md);">
+        How often each symptom appears in the 3 days before each event type.
+    </p>
+    <div style="overflow-x:auto;">
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>symptom</th>
+                    {% for key, label, color in tiers %}
+                        {% if profiles[key] %}
+                        <th style="text-align:center; color:{{ color }};">{{ label }}</th>
+                        {% endif %}
+                    {% endfor %}
+                </tr>
+            </thead>
+            <tbody>
+                {% for sym in symptom_keys %}
+                <tr>
+                    <td style="font-size:0.85rem;">{{ symptom_labels[sym] }}</td>
+                    {% for key, label, color in tiers %}
+                        {% if profiles[key] %}
+                        <td style="text-align:center;">
+                            {% set pct = profiles[key].symptom_freq[sym] %}
+                            <span style="
+                                {% if pct >= 50 %}color:var(--color-danger); font-weight:600;
+                                {% elif pct >= 25 %}color:var(--color-warning);
+                                {% else %}color:var(--text-muted);
+                                {% endif %}">
+                                {{ pct }}%
+                            </span>
+                        </td>
+                        {% endif %}
+                    {% endfor %}
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<!-- Top symptom combinations -->
+{% for key, label, color in tiers %}
+{% if profiles[key] and profiles[key].top_combos and key != 'baseline' %}
+<div class="card" style="margin-bottom:var(--space-md); border-left:4px solid {{ color }};">
+    <div class="card-title" style="color:{{ color }};">{{ label }} — common symptom combinations (pre-flare)</div>
+    <div style="font-size:0.9rem;">
+        {% for combo in profiles[key].top_combos %}
+        <div style="margin-bottom:var(--space-xs);">
+            <span style="color:var(--text-secondary);">{{ combo.symptoms | join(' + ') }}</span>
+            <span style="color:var(--text-muted); font-size:0.8rem;"> ({{ combo.count }}x)</span>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+{% endif %}
+{% endfor %}
+
+<!-- Cycle phase distribution -->
+{% set has_phase = false %}
+{% for key, label, color in tiers %}
+    {% if profiles[key] and profiles[key].phase_pct %}
+        {% set has_phase = true %}
+    {% endif %}
+{% endfor %}
+
+{% if has_phase %}
+<div class="card" style="margin-bottom:var(--space-xl);">
+    <div class="card-title">cycle phase distribution in pre-flare windows</div>
+    <div style="overflow-x:auto;">
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>phase</th>
+                    {% for key, label, color in tiers %}
+                        {% if profiles[key] %}
+                        <th style="text-align:center; color:{{ color }};">{{ label }}</th>
+                        {% endif %}
+                    {% endfor %}
+                </tr>
+            </thead>
+            <tbody>
+                {% for phase in ['follicular', 'luteal', 'pms'] %}
+                <tr>
+                    <td style="font-size:0.85rem;">{{ phase }}</td>
+                    {% for key, label, color in tiers %}
+                        {% if profiles[key] %}
+                        <td style="text-align:center;">
+                            {{ profiles[key].phase_pct.get(phase, 0) }}%
+                        </td>
+                        {% endif %}
+                    {% endfor %}
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endif %}
+
+<!-- RMSSD trajectory before severe events -->
+{% if has_rmssd_trajectories %}
+<div class="card" style="margin-bottom:var(--space-xl);">
+    <div class="card-title">RMSSD trajectory before severe events</div>
+    <p style="font-size:0.8rem; color:var(--text-muted); margin-bottom:var(--space-md);">
+        RMSSD (parasympathetic HRV) in the 7 days leading up to each ER visit or major flare.
+        The bold line shows the average across all events. The shaded band shows +/- 1 SD.
+    </p>
+    <div style="font-size:0.75rem; color:var(--text-muted); margin-bottom:var(--space-sm);">
+        <span style="color:#ff4444;">&#9472;</span> ER visit
+        <span style="color:#ff8c00; margin-left:0.5rem;">&#9472;</span> major flare
+        <span style="color:#82b4ff; margin-left:0.5rem; font-weight:bold;">&#9473;</span> aggregate mean
+        {% if baseline_rmssd %}
+        <span style="color:#66bb6a; margin-left:0.5rem;">- - -</span> baseline avg ({{ baseline_rmssd }} ms)
+        {% endif %}
+    </div>
+    {% if rmssd_trend %}
+    <div style="font-size:0.8rem; margin-bottom:var(--space-sm);
+                padding:var(--space-xs) var(--space-sm);
+                background:var(--bg-secondary); border-radius:6px; display:inline-block;">
+        pre-flare RMSSD trend:
+        <strong style="color:{% if rmssd_trend.direction == 'rising' %}var(--color-warning){% elif rmssd_trend.direction == 'falling' %}var(--color-danger){% else %}var(--text-secondary){% endif %};">
+            {{ rmssd_trend.direction }}
+            ({{ '%+.1f'|format(rmssd_trend.total_change) }} ms over 7 days)
+        </strong>
+    </div>
+    {% endif %}
+    <canvas id="chartRmssdTrajectory" style="max-height:340px;"></canvas>
+</div>
+{% endif %}
+
+<div class="card" style="margin-bottom:var(--space-xl); border-left:4px solid var(--color-accent);">
+    <div class="card-title">how to read this</div>
+    <div style="font-size:0.85rem; color:var(--text-secondary); line-height:1.7;">
+        <p>This page compares what your body was doing in the <strong>3 days before</strong> each severity of flare event.</p>
+        <p>Look for differences between the ER/major columns and baseline. If fatigue is consistently higher before ER visits,
+           or a specific symptom combination keeps showing up, those are your warning signs.</p>
+        <p>The more labeled flare data you have, the more reliable these patterns become. With {{ flare_counts.er_visit }} ER visits
+           and {{ flare_counts.major }} major flares, {% if flare_counts.major >= 10 %}the major flare patterns are
+           fairly reliable{% else %}patterns will sharpen as you add more data{% endif %}.</p>
+    </div>
+</div>
+
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+{% if has_rmssd_trajectories %}
+<script>
+(function() {
+    const trajectories = {{ rmssd_trajectories_json | safe }};
+    const aggregate = {{ rmssd_aggregate_json | safe }};
+    const baselineRmssd = {{ baseline_rmssd | tojson }};
+    const LABELS = ['-7', '-6', '-5', '-4', '-3', '-2', '-1', 'event'];
+
+    Chart.defaults.font.family = "'Source Serif 4', 'Times New Roman', serif";
+    Chart.defaults.font.size = 12;
+    Chart.defaults.color = '#9994a8';
+
+    // Individual event lines (subdued)
+    const datasets = trajectories.map((t, i) => {
+        const isER = t.severity === 'er_visit';
+        const baseColor = isER ? '255,68,68' : '255,140,0';
+        const opacity = Math.max(0.2, 0.5 - i * 0.05);
+        return {
+            label: (isER ? 'ER' : 'Major') + ' — ' + t.date,
+            data: t.values,
+            borderColor: `rgba(${baseColor},${opacity})`,
+            backgroundColor: 'transparent',
+            borderWidth: 1,
+            pointRadius: 0,
+            pointHoverRadius: 3,
+            tension: 0.3,
+            spanGaps: true,
+            order: 3,
+        };
+    });
+
+    if (datasets.length === 0) return;
+
+    // +/- 1 SD confidence band
+    const upperBound = aggregate.mean.map((m, i) =>
+        m !== null && aggregate.std[i] !== null ? +(m + aggregate.std[i]).toFixed(2) : null
+    );
+    const lowerBound = aggregate.mean.map((m, i) =>
+        m !== null && aggregate.std[i] !== null ? +(m - aggregate.std[i]).toFixed(2) : null
+    );
+
+    datasets.push({
+        label: 'mean +1 SD',
+        data: upperBound,
+        borderColor: 'transparent',
+        backgroundColor: 'rgba(130,180,255,0.15)',
+        fill: '+1',
+        pointRadius: 0,
+        tension: 0.3,
+        spanGaps: true,
+        order: 1,
+    });
+    datasets.push({
+        label: 'mean -1 SD',
+        data: lowerBound,
+        borderColor: 'transparent',
+        backgroundColor: 'transparent',
+        fill: false,
+        pointRadius: 0,
+        tension: 0.3,
+        spanGaps: true,
+        order: 1,
+    });
+
+    // Aggregate mean line (prominent)
+    datasets.push({
+        label: 'aggregate mean',
+        data: aggregate.mean,
+        borderColor: 'rgba(130,180,255,1)',
+        backgroundColor: 'transparent',
+        borderWidth: 3,
+        pointRadius: 4,
+        pointHoverRadius: 6,
+        pointBackgroundColor: 'rgba(130,180,255,1)',
+        tension: 0.3,
+        spanGaps: true,
+        order: 0,
+    });
+
+    // Baseline reference line (dashed green)
+    if (baselineRmssd !== null) {
+        datasets.push({
+            label: 'baseline avg (' + baselineRmssd + ' ms)',
+            data: Array(8).fill(baselineRmssd),
+            borderColor: 'rgba(102,187,106,0.7)',
+            borderWidth: 2,
+            borderDash: [6, 4],
+            pointRadius: 0,
+            fill: false,
+            order: 2,
+        });
+    }
+
+    new Chart(document.getElementById('chartRmssdTrajectory'), {
+        type: 'line',
+        data: { labels: LABELS, datasets: datasets },
+        options: {
+            responsive: true,
+            interaction: { mode: 'index', intersect: false },
+            plugins: {
+                legend: {
+                    labels: {
+                        color: '#9994a8', boxWidth: 12, padding: 10, font: { size: 11 },
+                        filter: function(item) { return !item.text.includes('SD'); }
+                    }
+                },
+                tooltip: {
+                    backgroundColor: '#1e1e28',
+                    borderColor: '#2a2a38',
+                    borderWidth: 1,
+                    padding: 10,
+                    cornerRadius: 6,
+                    callbacks: {
+                        label: function(ctx) {
+                            if (ctx.parsed.y === null) return ctx.dataset.label + ': no data';
+                            var val = ctx.parsed.y.toFixed(1) + ' ms';
+                            if (ctx.dataset.label === 'aggregate mean' && aggregate.n[ctx.dataIndex]) {
+                                return ctx.dataset.label + ': ' + val + ' (n=' + aggregate.n[ctx.dataIndex] + ')';
+                            }
+                            return ctx.dataset.label + ': ' + val;
+                        }
+                    }
+                }
+            },
+            scales: {
+                x: {
+                    grid: { color: 'rgba(255,255,255,0.06)' },
+                    title: { display: true, text: 'days before event', color: '#9994a8' }
+                },
+                y: {
+                    grid: { color: 'rgba(255,255,255,0.06)' },
+                    title: { display: true, text: 'RMSSD (ms)', color: '#9994a8' }
+                }
+            }
+        }
+    });
+})();
+</script>
+{% endif %}
+{% endblock %}

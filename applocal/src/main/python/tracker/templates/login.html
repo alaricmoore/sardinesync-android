@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+
+{% block title %}login — sardinetracker{% endblock %}
+
+{% block content %}
+<div style="max-width:360px; margin:var(--space-2xl) auto;">
+    <div class="card">
+        <div style="margin-bottom:var(--space-lg);">
+            <div class="app-wordmark" style="font-size:1.3rem; margin-bottom:var(--space-xs);">
+                sardine<span style="color:var(--color-accent);">tracker</span>
+            </div>
+            <p style="color:var(--text-muted); font-size:0.875rem; margin:0;">
+                sign in to continue
+            </p>
+        </div>
+
+        {% if error %}
+        <p style="color:var(--color-danger); margin-bottom:var(--space-md); font-size:0.9rem;">
+            {{ error }}
+        </p>
+        {% endif %}
+
+        <form method="POST" action="{{ url_for('login') }}">
+            <div class="form-group">
+                <label for="username">username</label>
+                <input type="text" id="username" name="username"
+                       autofocus autocomplete="username"
+                       required>
+            </div>
+            <div class="form-group">
+                <label for="password">password</label>
+                <input type="password" id="password" name="password"
+                       autocomplete="current-password"
+                       required>
+            </div>
+            <div class="form-group" style="display:flex; align-items:center; gap:var(--space-sm);">
+                <input type="checkbox" id="remember" name="remember" value="1"
+                       style="width:auto; margin:0;">
+                <label for="remember" style="margin:0; font-size:0.875rem; color:var(--text-secondary);">
+                    remember me
+                </label>
+            </div>
+            <button type="submit" class="btn btn-primary btn-full">
+                sign in
+            </button>
+        </form>
+
+        <p style="text-align:center; margin-top:var(--space-md); font-size:0.85rem;">
+            <a href="{{ url_for('register') }}" style="color:var(--text-muted);">
+                new here? create an account
+            </a>
+        </p>
+    </div>
+</div>
+{% endblock %}

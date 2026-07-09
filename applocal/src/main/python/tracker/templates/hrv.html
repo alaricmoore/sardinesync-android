@@ -1,0 +1,527 @@
+{% extends "base.html" %}
+
+{% block title %}autonomic — sardinetracker{% endblock %}
+
+{% block head %}
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+.data-count {
+    display: inline-block;
+    margin-left: 0.5rem;
+    font-size: 0.7rem;
+    font-weight: normal;
+    color: var(--text-muted);
+    letter-spacing: 0.02em;
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>autonomic</h1>
+    <p class="page-subtitle">hrv & respiratory rate{% if primary_intervention_name %} · {{ primary_intervention_name }} response{% endif %}</p>
+</div>
+
+{% if not has_data %}
+<div class="empty-state">
+    <p>No HRV data found.</p>
+    <p style="margin-top:1rem;">HRV is pulled from Apple Health via the daily entry form.</p>
+    <p style="margin-top:0.5rem;"><a href="{{ url_for('daily_entry') }}">add today's entry</a></p>
+</div>
+
+{% else %}
+
+{% if primary_intervention_date %}
+<!-- Pre/post intervention summary cards -->
+<div style="display:grid; grid-template-columns: 1fr 1fr;
+            gap:var(--space-md); margin-bottom:var(--space-lg);">
+
+    <div class="card" style="border-color: rgba(74,144,217,0.3);">
+        <div class="card-title" style="color:var(--text-muted); font-size:0.8rem;
+             text-transform:uppercase; letter-spacing:0.08em;">
+            before {{ primary_intervention_name }}
+        </div>
+        <div id="preStats" style="margin-top:var(--space-sm);"></div>
+    </div>
+
+    <div class="card" style="border-color: {% if primary_intervention_category == 'supplement' %}rgba(224,148,58,0.4){% else %}rgba(74,184,184,0.4){% endif %};">
+        <div class="card-title" style="color:{% if primary_intervention_category == 'supplement' %}var(--color-intervention-supplement){% else %}#4ab8b8{% endif %}; font-size:0.8rem;
+             text-transform:uppercase; letter-spacing:0.08em;">
+            after {{ primary_intervention_name }} · {{ primary_intervention_date }}
+        </div>
+        <div id="postStats" style="margin-top:var(--space-sm);"></div>
+    </div>
+
+</div>
+{% endif %}
+
+<!-- HRV trend chart -->
+<div class="chart-container">
+    <div class="chart-title">hrv — raw & 7-day rolling average
+        <span id="countHRV" class="data-count"></span>
+    </div>
+    {% if flare_events_json != '[]' %}
+    <div style="font-size:0.75rem; color:var(--text-muted); margin-bottom:var(--space-sm);">
+        flare markers:
+        <span style="color:#ff4444;">|</span> ER visit
+        <span style="color:#ff8c00; margin-left:0.5rem;">|</span> major
+        <span style="color:#ffcc00; margin-left:0.5rem;">|</span> minor
+    </div>
+    {% endif %}
+    <canvas id="chartHRV" style="max-height:340px;"></canvas>
+</div>
+
+<!-- Respiratory rate vs HRV chart -->
+<div class="chart-container">
+    <div class="chart-title">respiratory rate vs hrv
+        <span id="countRespHRV" class="data-count"></span>
+    </div>
+    <canvas id="chartRespHRV" style="max-height:280px;"></canvas>
+</div>
+
+<!-- Respiratory rate vs flares chart -->
+<div class="chart-container">
+    <div class="chart-title">respiratory rate vs flares
+        <span id="countRespFlares" class="data-count"></span>
+    </div>
+    {% if flare_events_json != '[]' %}
+    <div style="font-size:0.75rem; color:var(--text-muted); margin-bottom:var(--space-sm);">
+        flare markers:
+        <span style="color:#ff4444;">|</span> ER visit
+        <span style="color:#ff8c00; margin-left:0.5rem;">|</span> major
+        <span style="color:#ffcc00; margin-left:0.5rem;">|</span> minor
+    </div>
+    {% endif %}
+    <canvas id="chartRespFlares" style="max-height:280px;"></canvas>
+</div>
+
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+{% if has_data %}
+<script>
+const H = {{ hrv_json | safe }};
+const FLARE_EVENTS = {{ flare_events_json | safe }};
+const PRIMARY_INTERVENTION_DATE = "{{ primary_intervention_date or '' }}";
+const PRIMARY_INTERVENTION_NAME = "{{ primary_intervention_name or 'intervention' }}";
+const PRIMARY_INTERVENTION_CATEGORY = "{{ primary_intervention_category or 'prescription' }}";
+const OTHER_INTERVENTIONS = {{ other_interventions_json | safe }};
+
+Chart.defaults.font.family = "'Source Serif 4', 'Times New Roman', serif";
+Chart.defaults.font.size = 12;
+Chart.defaults.color = '#9994a8';
+
+const GRID = 'rgba(255,255,255,0.06)';
+const TEXT = '#9994a8';
+
+// ============================================================
+// Medication intervention line plugin
+// ============================================================
+const interventionLinePlugin = {
+    id: 'interventionLines',
+    afterDraw(chart) {
+        const { ctx, chartArea, scales } = chart;
+        if (!chartArea || !scales.x) return;
+
+        if (PRIMARY_INTERVENTION_DATE) {
+            const x = scales.x.getPixelForValue(PRIMARY_INTERVENTION_DATE);
+            if (x && x >= chartArea.left && x <= chartArea.right) {
+                const isSupplement = PRIMARY_INTERVENTION_CATEGORY === 'supplement';
+                const lineColor = isSupplement ? 'rgba(224,148,58,0.6)' : 'rgba(74,184,184,0.6)';
+                const textColor = isSupplement ? 'rgba(224,148,58,0.8)' : 'rgba(74,184,184,0.8)';
+                ctx.save();
+                ctx.beginPath();
+                ctx.moveTo(x, chartArea.top);
+                ctx.lineTo(x, chartArea.bottom);
+                ctx.strokeStyle = lineColor;
+                ctx.lineWidth = 1.5;
+                ctx.setLineDash([4, 3]);
+                ctx.stroke();
+
+                ctx.fillStyle = textColor;
+                ctx.font = "11px 'Source Serif 4', serif";
+                ctx.textAlign = 'left';
+                ctx.fillText(PRIMARY_INTERVENTION_NAME + ' start', x + 5, chartArea.top + 14);
+                ctx.restore();
+            }
+        }
+
+        OTHER_INTERVENTIONS.forEach((med, i) => {
+            const x = scales.x.getPixelForValue(med.start_date);
+            if (x && x >= chartArea.left && x <= chartArea.right) {
+                const isSupplement = med.category === 'supplement';
+                const lineColor = isSupplement ? 'rgba(224,148,58,0.3)' : 'rgba(157,114,207,0.3)';
+                const textColor = isSupplement ? 'rgba(224,148,58,0.5)' : 'rgba(157,114,207,0.5)';
+                ctx.save();
+                ctx.beginPath();
+                ctx.moveTo(x, chartArea.top);
+                ctx.lineTo(x, chartArea.bottom);
+                ctx.strokeStyle = lineColor;
+                ctx.lineWidth = 1;
+                ctx.setLineDash([2, 2]);
+                ctx.stroke();
+
+                ctx.fillStyle = textColor;
+                ctx.font = "9px 'Source Serif 4', serif";
+                ctx.textAlign = 'left';
+                ctx.fillText(med.drug_name, x + 3, chartArea.top + 28 + (i * 11));
+                ctx.restore();
+            }
+        });
+    }
+};
+
+// ============================================================
+// Flare event vertical line plugin
+// ============================================================
+const SEVERITY_COLORS = {
+    'er_visit': '#ff4444',
+    'major': '#ff8c00',
+    'minor': '#ffcc00'
+};
+
+const flareLinePlugin = {
+    id: 'flareLines',
+    afterDraw(chart) {
+        const { ctx, chartArea, scales } = chart;
+        if (!chartArea || !scales.x) return;
+
+        FLARE_EVENTS.forEach(event => {
+            const x = scales.x.getPixelForValue(event.date);
+            if (!x || x < chartArea.left || x > chartArea.right) return;
+
+            const color = SEVERITY_COLORS[event.severity] || '#ffcc00';
+            ctx.save();
+            ctx.beginPath();
+            ctx.moveTo(x, chartArea.top);
+            ctx.lineTo(x, chartArea.bottom);
+            ctx.strokeStyle = color;
+            ctx.lineWidth = 1;
+            ctx.globalAlpha = 0.5;
+            ctx.stroke();
+            ctx.restore();
+        });
+    }
+};
+
+function gridOpts() {
+    return { color: GRID };
+}
+
+function tooltipOpts() {
+    return {
+        backgroundColor: '#1e1e28',
+        borderColor: '#2a2a38',
+        borderWidth: 1,
+        padding: 10,
+        cornerRadius: 6,
+    };
+}
+
+// ============================================================
+// Build HRV trend chart
+// ============================================================
+function buildHRVChart() {
+    new Chart(document.getElementById('chartHRV'), {
+        type: 'line',
+        plugins: [interventionLinePlugin, flareLinePlugin],
+        data: {
+            labels: H.dates,
+            datasets: [
+                {
+                    label: 'SDNN raw',
+                    data: H.hrv_raw,
+                    borderColor: 'rgba(74,144,217,0.3)',
+                    backgroundColor: 'transparent',
+                    borderWidth: 1,
+                    pointRadius: 0,
+                    pointHoverRadius: 3,
+                    tension: 0.3,
+                },
+                {
+                    label: 'SDNN 7d avg',
+                    data: H.hrv_rolling,
+                    borderColor: '#4a90d9',
+                    backgroundColor: 'rgba(74,144,217,0.1)',
+                    borderWidth: 2,
+                    pointRadius: 0,
+                    pointHoverRadius: 4,
+                    tension: 0.4,
+                    fill: true,
+                },
+                ...(H.rmssd_raw && H.rmssd_raw.some(v => v !== null) ? [
+                {
+                    label: 'RMSSD raw',
+                    data: H.rmssd_raw,
+                    borderColor: 'rgba(155,114,207,0.3)',
+                    backgroundColor: 'transparent',
+                    borderWidth: 1,
+                    pointRadius: 0,
+                    pointHoverRadius: 3,
+                    tension: 0.3,
+                },
+                {
+                    label: 'RMSSD 7d avg',
+                    data: H.rmssd_rolling,
+                    borderColor: '#9b72cf',
+                    backgroundColor: 'rgba(155,114,207,0.1)',
+                    borderWidth: 2,
+                    pointRadius: 0,
+                    pointHoverRadius: 4,
+                    tension: 0.4,
+                    fill: true,
+                }] : [])
+            ]
+        },
+        options: {
+            responsive: true,
+            interaction: { mode: 'index', intersect: false },
+            plugins: {
+                legend: { labels: { color: TEXT, boxWidth: 12, padding: 16 } },
+                tooltip: tooltipOpts(),
+            },
+            scales: {
+                x: {
+                    grid: gridOpts(),
+                    ticks: { maxTicksLimit: 12, maxRotation: 45 }
+                },
+                y: {
+                    grid: gridOpts(),
+                    title: { display: true, text: 'HRV — SDNN / RMSSD (ms)', color: TEXT }
+                }
+            }
+        }
+    });
+}
+
+// ============================================================
+// Build respiratory rate vs HRV chart
+// ============================================================
+function buildRespHRVChart() {
+    if (!H.resp_raw || !H.resp_raw.some(v => v !== null)) return;
+
+    new Chart(document.getElementById('chartRespHRV'), {
+        type: 'line',
+        plugins: [interventionLinePlugin, flareLinePlugin],
+        data: {
+            labels: H.dates,
+            datasets: [
+                {
+                    label: 'HRV 7d avg (ms)',
+                    data: H.hrv_rolling,
+                    borderColor: '#4a90d9',
+                    backgroundColor: 'transparent',
+                    borderWidth: 2,
+                    pointRadius: 0,
+                    tension: 0.4,
+                    yAxisID: 'yHRV',
+                },
+                {
+                    label: 'Resp rate 7d avg (bpm)',
+                    data: H.resp_rolling,
+                    borderColor: '#4ab8a0',
+                    backgroundColor: 'rgba(74,184,160,0.08)',
+                    borderWidth: 2,
+                    pointRadius: 0,
+                    pointHoverRadius: 4,
+                    tension: 0.4,
+                    fill: true,
+                    spanGaps: true,
+                    yAxisID: 'yResp',
+                }
+            ]
+        },
+        options: {
+            responsive: true,
+            interaction: { mode: 'index', intersect: false },
+            plugins: {
+                legend: { labels: { color: TEXT, boxWidth: 12, padding: 16 } },
+                tooltip: tooltipOpts(),
+            },
+            scales: {
+                x: {
+                    grid: gridOpts(),
+                    ticks: { maxTicksLimit: 12, maxRotation: 45 }
+                },
+                yHRV: {
+                    type: 'linear',
+                    position: 'left',
+                    grid: gridOpts(),
+                    title: { display: true, text: 'HRV (ms)', color: '#4a90d9' },
+                    ticks: { color: '#4a90d9' },
+                },
+                yResp: {
+                    type: 'linear',
+                    position: 'right',
+                    grid: { display: false },
+                    title: { display: true, text: 'Resp rate (bpm)', color: '#4ab8a0' },
+                    ticks: { color: '#4ab8a0' },
+                }
+            }
+        }
+    });
+}
+
+// ============================================================
+// Build respiratory rate vs flares chart
+// ============================================================
+function buildRespFlaresChart() {
+    if (!H.resp_raw || !H.resp_raw.some(v => v !== null)) return;
+
+    new Chart(document.getElementById('chartRespFlares'), {
+        type: 'line',
+        plugins: [interventionLinePlugin, flareLinePlugin],
+        data: {
+            labels: H.dates,
+            datasets: [
+                {
+                    label: 'Resp rate 7d avg',
+                    data: H.resp_rolling,
+                    borderColor: '#4ab8a0',
+                    backgroundColor: 'rgba(74,184,160,0.08)',
+                    borderWidth: 2,
+                    pointRadius: 0,
+                    pointHoverRadius: 4,
+                    tension: 0.4,
+                    fill: true,
+                    spanGaps: true,
+                },
+                {
+                    label: 'Resp rate (raw)',
+                    data: H.resp_raw,
+                    borderColor: 'transparent',
+                    backgroundColor: 'rgba(74,184,160,0.45)',
+                    pointRadius: 2,
+                    pointHoverRadius: 4,
+                    pointStyle: 'circle',
+                    showLine: false,
+                    spanGaps: false,
+                }
+            ]
+        },
+        options: {
+            responsive: true,
+            interaction: { mode: 'index', intersect: false },
+            plugins: {
+                legend: { labels: { color: TEXT, boxWidth: 12, padding: 16 } },
+                tooltip: tooltipOpts(),
+            },
+            scales: {
+                x: {
+                    grid: gridOpts(),
+                    ticks: { maxTicksLimit: 12, maxRotation: 45 }
+                },
+                y: {
+                    grid: gridOpts(),
+                    title: { display: true, text: 'Resp rate (bpm)', color: '#4ab8a0' },
+                    ticks: { color: '#4ab8a0' },
+                }
+            }
+        }
+    });
+}
+
+// ============================================================
+// Populate pre/post stats cards
+// ============================================================
+function populateStats() {
+    const pre  = H.pre_intervention;
+    const post = H.post_intervention;
+
+    const preEl = document.getElementById('preStats');
+    const postEl = document.getElementById('postStats');
+
+    function buildStatHTML(stats, isPost) {
+        if (!stats || stats.n === 0) {
+            return '<div style="color:var(--text-muted); font-size:0.9rem;">' + (isPost ? 'no data yet' : 'no data') + '</div>';
+        }
+
+        let html = '<div style="font-size:1.6rem; font-weight:600; color:' + (isPost ? '#4ab8b8' : '#4a90d9') + ';">'
+            + stats.mean + ' <span style="font-size:0.9rem; color:var(--text-muted);">ms SDNN</span></div>'
+            + '<div style="font-size:0.85rem; color:var(--text-muted); margin-top:4px;">'
+            + '\u03c3 ' + stats.std + ' \u00b7 n=' + stats.n + '</div>';
+
+        if (isPost && pre && pre.mean && stats.mean) {
+            const delta = stats.mean - pre.mean;
+            html += '<div style="font-size:0.85rem; margin-top:4px; color:' + (delta > 0 ? '#4ab8b8' : '#c94040') + ';">'
+                + (delta > 0 ? '\u2191' : '\u2193') + ' ' + Math.abs(delta).toFixed(1) + ' ms SDNN</div>';
+        }
+
+        if (stats.rmssd_mean != null) {
+            html += '<div style="font-size:0.85rem; color:#9b72cf; margin-top:4px;">'
+                + 'RMSSD: ' + stats.rmssd_mean + ' ms (\u03c3 ' + stats.rmssd_std + ')</div>';
+        }
+
+        if (stats.resp_mean != null) {
+            html += '<div style="font-size:0.85rem; color:#4ab8a0; margin-top:4px;">'
+                + 'Resp: ' + stats.resp_mean + ' bpm (\u03c3 ' + stats.resp_std + ')</div>';
+        }
+
+        return html;
+    }
+
+    preEl.innerHTML = buildStatHTML(pre, false);
+    postEl.innerHTML = buildStatHTML(post, true);
+}
+
+// ============================================================
+// Data-point counts in chart titles
+// ============================================================
+function countNonNull(arr) {
+    if (!Array.isArray(arr)) return 0;
+    let n = 0;
+    for (let i = 0; i < arr.length; i++) {
+        if (arr[i] != null) n++;
+    }
+    return n;
+}
+
+function countBothNonNull(a, b) {
+    if (!Array.isArray(a) || !Array.isArray(b)) return 0;
+    const len = Math.min(a.length, b.length);
+    let n = 0;
+    for (let i = 0; i < len; i++) {
+        if (a[i] != null && b[i] != null) n++;
+    }
+    return n;
+}
+
+function populateCounts() {
+    const sdnnN  = countNonNull(H.hrv_raw);
+    const rmssdN = countNonNull(H.rmssd_raw);
+    const respN  = countNonNull(H.resp_raw);
+    const flareN = Array.isArray(FLARE_EVENTS) ? FLARE_EVENTS.length : 0;
+    const overlapHrvResp = countBothNonNull(H.hrv_raw, H.resp_raw);
+
+    const elHRV = document.getElementById('countHRV');
+    if (elHRV) {
+        const parts = [sdnnN + ' SDNN'];
+        if (rmssdN > 0) parts.push(rmssdN + ' RMSSD');
+        elHRV.textContent = '· ' + parts.join(' · ') + ' days';
+    }
+
+    const elRespHRV = document.getElementById('countRespHRV');
+    if (elRespHRV) {
+        elRespHRV.textContent = '· ' + sdnnN + ' HRV · ' + respN + ' resp · ' + overlapHrvResp + ' both';
+    }
+
+    const elRespFlares = document.getElementById('countRespFlares');
+    if (elRespFlares) {
+        elRespFlares.textContent = '· ' + respN + ' resp days · ' + flareN + ' flare event' + (flareN === 1 ? '' : 's');
+    }
+}
+
+// ============================================================
+// Init
+// ============================================================
+populateCounts();
+buildHRVChart();
+buildRespHRVChart();
+buildRespFlaresChart();
+if (PRIMARY_INTERVENTION_DATE) {
+    populateStats();
+}
+</script>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,2185 @@
+ {% extends "base.html" %}
+
+{% block title %}medical record — sardinetracker{% endblock %}
+
+{% block head %}
+<style>
+@media (max-width: 600px) {
+    .tab-nav {
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+        white-space: nowrap;
+        scrollbar-width: none;
+        flex-wrap: nowrap;
+    }
+    .tab-nav::-webkit-scrollbar { display: none; }
+    .tab-nav .tab-btn { flex-shrink: 0; }
+
+    .add-toggle-row {
+        flex-direction: column !important;
+        gap: var(--space-sm);
+        align-items: stretch !important;
+    }
+
+    .add-toggle-row .btn { width: 100%; }
+
+    .mobile-export-collapse > summary {
+        font-size: 0.85rem;
+        color: var(--text-muted);
+        cursor: pointer;
+        padding: var(--space-xs) 0;
+    }
+
+    .form-grid { grid-template-columns: 1fr !important; }
+}
+
+@media (min-width: 601px) {
+    .mobile-export-collapse { display: contents; }
+    .mobile-export-collapse > summary { display: none; }
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>medical record</h1>
+    <p class="page-subtitle">labs · ana · medications · events · clinicians</p>
+</div>
+
+<!-- Tab navigation -->
+<div class="tab-nav" id="tabNav">
+    <button class="tab-btn active" onclick="switchTab('labs')">
+        labs
+        {% if labs %}<span class="tab-count">{{ labs|length }}</span>{% endif %}
+    </button>
+    <button class="tab-btn" onclick="switchTab('ana')">
+        ana
+        {% if ana %}<span class="tab-count">{{ ana|length }}</span>{% endif %}
+    </button>
+    <button class="tab-btn" onclick="switchTab('medications')">
+        medications
+        {% if meds %}<span class="tab-count">{{ meds|length }}</span>{% endif %}
+    </button>
+    <button class="tab-btn" onclick="switchTab('events')">
+        events
+        {% if events %}<span class="tab-count">{{ events|length }}</span>{% endif %}
+    </button>
+    <button class="tab-btn" onclick="switchTab('clinicians')">
+        clinicians
+        {% if clinicians %}<span class="tab-count">{{ clinicians|length }}</span>{% endif %}
+    </button>
+    <button class="tab-btn" onclick="switchTab('backfill')">
+        backfill
+        {% if flare_history %}<span class="tab-count">{{ flare_history|length }}</span>{% endif %}
+    </button>
+    <button class="tab-btn" onclick="switchTab('documents')">
+        documents
+        {% if documents %}<span class="tab-count">{{ documents|length }}</span>{% endif %}
+    </button>
+</div>
+
+<!-- ============================================================
+     LABS TAB
+     ============================================================ -->
+<div class="tab-panel active" id="tab-labs">
+
+    <!-- Add form -->
+    <div class="add-toggle-row" style="display:flex; justify-content:space-between; align-items:center; margin-bottom:var(--space-md);">
+    <div style="display:flex; gap:var(--space-sm); flex-wrap:wrap;">
+    <button class="btn btn-secondary" onclick="toggleForm('form-lab')">
+        + add lab result
+    </button>
+    <button class="btn btn-secondary" onclick="toggleForm('form-lab-import')">
+        ↥ import CSV
+    </button>
+    </div>
+
+    <!-- Export section -->
+    <details class="mobile-export-collapse">
+        <summary>export options</summary>
+        <div style="display:flex; gap:var(--space-sm); align-items:center; flex-wrap:wrap;">
+            <label style="font-size:0.85rem; color:var(--text-muted);">Export:</label>
+            <input type="date" id="export-labs-start" style="padding:4px 8px; font-size:0.85rem;">
+            <span style="color:var(--text-muted);">to</span>
+            <input type="date" id="export-labs-end" style="padding:4px 8px; font-size:0.85rem;">
+            <button class="btn btn-primary btn-sm" onclick="exportLabs()">
+                Download CSV ↓
+            </button>
+        </div>
+    </details>
+</div>
+
+
+    <div class="add-form-panel" id="form-lab-import">
+        <form method="POST" action="{{ url_for('import_labs_preview') }}" enctype="multipart/form-data">
+            <p style="font-size:0.85rem; color:var(--text-muted); margin-top:0;">
+                Upload or paste a lab CSV — columns <b>Date, Test, Value, Units</b>
+                (Lab and Doctor optional). Known tests get a reference range and
+                high/low flag filled in automatically. You review everything before
+                anything is saved.
+            </p>
+            <div class="form-group">
+                <label>CSV file</label>
+                <input type="file" name="csv_file" accept=".csv,text/csv">
+            </div>
+            <div class="form-group">
+                <label>…or paste rows</label>
+                <textarea name="csv_text" rows="4"
+                    placeholder="Date,Test,Value,Units&#10;2026-01-06,anti-dsDNA,18.42,IU/mL"></textarea>
+            </div>
+            <button type="submit" class="btn btn-primary">review import →</button>
+        </form>
+    </div>
+
+    <div class="add-form-panel" id="form-lab">
+        <form method="POST" action="{{ url_for('add_lab') }}">
+            <div class="form-grid">
+                <div class="form-group">
+                    <label>date *</label>
+                    <input type="date" name="date" required
+                           value="{{ today }}">
+                </div>
+                <div class="form-group">
+                    <label>test name *</label>
+                    <input type="text" name="test_name" required
+                           placeholder="e.g. anti-dsDNA, C4, CRP"
+                           list="test-names">
+                    <datalist id="test-names">
+                        {% for name in test_names %}
+                        <option value="{{ name }}">
+                        {% endfor %}
+                        <option value="ANA">
+                        <option value="anti-dsDNA">
+                        <option value="anti-Smith">
+                        <option value="anti-SSA/Ro">
+                        <option value="anti-SSB/La">
+                        <option value="C3">
+                        <option value="C4">
+                        <option value="CH50">
+                        <option value="CRP">
+                        <option value="ESR">
+                        <option value="CBC">
+                        <option value="CMP">
+                        <option value="RF">
+                        <option value="anti-CCP">
+                        <option value="TSH">
+                        <option value="ferritin">
+                        <option value="vitamin D">
+                        <option value="D-dimer">
+                    </datalist>
+                    <datalist id="unit-types">
+                        <option value="DIF biopsy">
+                        <option value="H&E biopsy">
+                        <option value="punch biopsy">
+                        <option value="shave biopsy">
+                        <option value="excisional biopsy">
+                        <option value="incisional biopsy">
+                        <option value="needle biopsy">
+                        <option value="core biopsy">
+                        <option value="X-ray">
+                        <option value="CT scan">
+                        <option value="MRI">
+                        <option value="ultrasound">
+                        <option value="PET scan">
+                        <option value="DEXA scan">
+                        <option value="mammogram">
+                        <option value="fluoroscopy">
+                        <option value="EKG/ECG">
+                        <option value="EMG">
+                        <option value="EEG">
+                        <option value="NCV">
+                        <option value="pulmonary function">
+                        <option value="stress test">
+                        <option value="echocardiogram">
+                        <option value="endoscopy">
+                        <option value="colonoscopy">
+                        <option value="holter monitor">
+                        <option value="IU/mL">
+                        <option value="mg/dL">
+                        <option value="g/dL">
+                        <option value="ng/mL">
+                        <option value="µg/L">
+                        <option value="mmol/L">
+                        <option value="cells/µL">
+                        <option value="K/µL">
+                        <option value="/mm³">
+                        <option value="%">
+                        <option value="ratio">
+                        <option value="titer">
+                        <option value="U/L">
+                        <option value="other">
+                    </datalist>
+                </div>
+                <div class="form-group">
+                    <label>numeric value</label>
+                    <input type="number" name="numeric_value"
+                           step="0.001" placeholder="e.g. 18.42">
+                </div>
+                <div class="form-group">
+                    <label>unit/type</label>
+                    <input type="text" name="unit"
+                           placeholder="IU/mL, mg/dL, etc.">
+                </div>
+                <div class="form-group">
+                    <label>qualitative result</label>
+                    <select name="qualitative_result">
+                        <option value="">—</option>
+                        <option value="positive">positive</option>
+                        <option value="negative">negative</option>
+                        <option value="equivocal">equivocal</option>
+                        <option value="indeterminate">indeterminate</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>flag</label>
+                    <select name="flag">
+                        <option value="">—</option>
+                        <option value="high">high</option>
+                        <option value="low">low</option>
+                        <option value="abnormal">abnormal</option>
+                        <option value="normal">normal</option>
+                        <option value="critical">critical</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>reference range</label>
+                    <input type="text" name="reference_range"
+                           placeholder="e.g. 0–200 IU/mL">
+                </div>
+                <div class="form-group">
+                    <label>provider</label>
+                    <input type="text" name="provider"
+                           placeholder="ordering provider">
+                </div>
+                <div class="form-group">
+                    <label>lab facility</label>
+                    <input type="text" name="lab_facility"
+                           placeholder="e.g. LabCorp, Quest">
+                </div>
+            </div>
+            <div class="form-group">
+                <label>notes</label>
+                <textarea name="notes"
+                    placeholder="context, collection notes, steroid timing, etc."
+                    style="min-height:60px;"></textarea>
+            </div>
+            <div style="display:flex; gap:var(--space-md); margin-top:var(--space-md);">
+                <button type="submit" class="btn btn-primary">save</button>
+                <button type="button" class="btn btn-secondary"
+                        onclick="toggleForm('form-lab')">cancel</button>
+            </div>
+        </form>
+    </div>
+
+<!-- Labs table with inline editing -->
+{% if labs %}
+<div style="overflow-x:auto;">
+    <table class="data-table">
+        <thead>
+            <tr>
+                <th>date</th>
+                <th>test</th>
+                <th>unit|or|type</th>
+                <th>range</th>
+                <th>result</th>
+                <th>provider</th>
+                <th>notes</th>
+                <th style="width:40px;"></th>
+            </tr>
+        </thead>
+        <tbody>
+            {% set labs_sorted = labs | sort(attribute='date', reverse=True) %}
+            {% set labs_show_all = request.args.get('labs') == 'all' %}
+            {% for lab in (labs_sorted if labs_show_all else labs_sorted[:60]) %}
+            <!-- Read-only row -->
+            <tr id="lab-row-{{ lab.id }}" class="data-row">
+                <td class="mono">{{ lab.date }}</td>
+                <td style="color:var(--text-primary);">{{ lab.test_name }}</td>
+                <td>
+                    <span style="color:var(--text-secondary);">{{ lab.unit or '—' }}</span>
+                </td>
+                <td>
+                    {% if lab.numeric_value is not none %}
+                        <span class="mono" style="color:
+                            {% if lab.flag == 'high' %}var(--color-danger)
+                            {% elif lab.flag == 'low' %}var(--color-accent)
+                            {% elif lab.flag == 'abnormal' %}var(--color-warning)
+                            {% elif lab.flag == 'critical' %}var(--color-danger)
+                            {% else %}var(--text-primary)
+                            {% endif %};">
+                            {{ lab.numeric_value }}
+                            {% if lab.unit %} {{ lab.unit }}{% endif %}
+                        </span>
+                    {% endif %}
+                    {% if lab.qualitative_result %}
+                        <span class="badge
+                            {% if lab.qualitative_result == 'positive' %}badge-migraine
+                            {% elif lab.qualitative_result == 'negative' %}badge-air
+                            {% else %}badge-emotional{% endif %}">
+                            {{ lab.qualitative_result }}
+                        </span>
+                    {% endif %}
+                </td>
+                <td style="color:var(--text-muted); font-size:0.8rem;">
+                    {{ lab.reference_range or '—' }}
+                </td>
+                <td style="color:var(--text-muted); font-size:0.8rem;">
+                    {{ lab.provider or '—' }}
+                </td>
+                <td style="color:var(--text-muted); font-size:0.8rem;
+                           max-width:200px; white-space:pre-wrap;">
+                    {{ lab.notes or '' }}
+                </td>
+                <td>
+                    <button class="edit-btn" onclick="editLab({{ lab.id }})" 
+                            title="edit">✎</button>
+                </td>
+            </tr>
+            
+            <!-- Edit row (hidden by default) -->
+            <tr id="lab-edit-{{ lab.id }}" class="edit-row" style="display:none;">
+                <td colspan="7">
+                    <form method="POST" action="{{ url_for('update_lab', lab_id=lab.id) }}" 
+                          id="form-edit-lab-{{ lab.id }}">
+                        <div class="inline-edit-grid">
+                            <div class="form-group">
+                                <label>date *</label>
+                                <input type="date" name="date" required 
+                                       value="{{ lab.date }}">
+                            </div>
+                            <div class="form-group">
+                                <label>test name *</label>
+                                <input type="text" name="test_name" required 
+                                       value="{{ lab.test_name }}" list="test-names">
+                            </div>
+                            <div class="form-group">
+                                <label>numeric value</label>
+                                <input type="number" name="numeric_value" step="0.001"
+                                       value="{{ lab.numeric_value if lab.numeric_value is not none else '' }}">
+                            </div>
+                            <div class="form-group">
+                                <label>unit|or|type</label>
+                                <input type="text" name="unit" list="unit-types"
+                                       value="{{ lab.unit or '' }}" placeholder="unit or type">
+                </div>
+                            <div class="form-group">
+                                <label>qualitative</label>
+                                <select name="qualitative_result">
+                                    <option value="">—</option>
+                                    <option value="positive" {% if lab.qualitative_result == 'positive' %}selected{% endif %}>positive</option>
+                                    <option value="negative" {% if lab.qualitative_result == 'negative' %}selected{% endif %}>negative</option>
+                                    <option value="equivocal" {% if lab.qualitative_result == 'equivocal' %}selected{% endif %}>equivocal</option>
+                                    <option value="indeterminate" {% if lab.qualitative_result == 'indeterminate' %}selected{% endif %}>indeterminate</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label>reference range</label>
+                                <input type="text" name="reference_range" 
+                                       value="{{ lab.reference_range or '' }}">
+                            </div>
+                            <div class="form-group">
+                                <label>flag</label>
+                                <select name="flag">
+                                    <option value="">—</option>
+                                    <option value="high" {% if lab.flag == 'high' %}selected{% endif %}>high</option>
+                                    <option value="low" {% if lab.flag == 'low' %}selected{% endif %}>low</option>
+                                    <option value="abnormal" {% if lab.flag == 'abnormal' %}selected{% endif %}>abnormal</option>
+                                    <option value="critical" {% if lab.flag == 'critical' %}selected{% endif %}>critical</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label>provider</label>
+                                <input type="text" name="provider" 
+                                       value="{{ lab.provider or '' }}">
+                            </div>
+                            <div class="form-group">
+                                <label>lab facility</label>
+                                <input type="text" name="lab_facility" 
+                                       value="{{ lab.lab_facility or '' }}">
+                            </div>
+                            <div class="form-group" style="grid-column: 1 / -1;">
+                                <label>notes</label>
+                                <textarea name="notes" style="min-height:60px;">{{ lab.notes or '' }}</textarea>
+                            </div>
+                        </div>
+                        <div class="inline-edit-actions">
+                            <button type="submit" class="btn btn-primary btn-sm">save</button>
+                            <button type="button" class="btn btn-secondary btn-sm" 
+                                    onclick="cancelEdit({{ lab.id }}, 'lab')">cancel</button>
+                            <button type="button" class="btn btn-danger btn-sm" 
+                                    id="delete-lab-{{ lab.id }}"
+                                    onclick="confirmDelete({{ lab.id }}, 'lab')">delete</button>
+                        </div>
+                    </form>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% if not labs_show_all and labs|length > 60 %}
+<div style="text-align:center; margin-top:var(--space-md);">
+    <a class="btn btn-secondary" href="{{ url_for('clinical_record') }}?labs=all#labs">show all {{ labs|length }} labs</a>
+    <p style="color:var(--text-muted); font-size:0.85rem; margin-top:4px;">
+        showing the 60 most recent — the full history is heavier to load</p>
+</div>
+{% endif %}
+{% else %}
+<div class="empty-state">
+    <p>No lab results yet.</p>
+</div>
+{% endif %}
+
+<style>
+.edit-btn {
+    background: transparent;
+    border: none;
+    color: var(--text-muted);
+    font-size: 1.1rem;
+    cursor: pointer;
+    padding: 4px 8px;
+    transition: color 0.15s;
+}
+
+.edit-btn:hover {
+    color: var(--text-primary);
+}
+
+.edit-row {
+    background: var(--bg-elevated);
+}
+
+.edit-row td {
+    padding: var(--space-lg) var(--space-md);
+}
+
+.inline-edit-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: var(--space-md);
+    margin-bottom: var(--space-md);
+}
+
+.inline-edit-actions {
+    display: flex;
+    gap: var(--space-sm);
+    padding-top: var(--space-sm);
+    border-top: 1px solid var(--border-subtle);
+}
+
+.btn-sm {
+    padding: 4px 12px;
+    font-size: 0.85rem;
+}
+
+.btn-danger {
+    background: transparent;
+    border: 1px solid var(--border-medium);
+    color: var(--text-secondary);
+}
+
+.btn-danger:hover {
+    border-color: #c94040;
+    color: #c94040;
+}
+</style>
+</div>
+
+<!-- ============================================================
+     ANA TAB
+     ============================================================ -->
+<div class="tab-panel" id="tab-ana">
+
+    <div class="add-toggle-row">
+        <button class="btn btn-secondary" onclick="toggleForm('form-ana')">
+            + add ana result
+        </button>
+    </div>
+
+    <div class="add-form-panel" id="form-ana">
+        <form method="POST" action="{{ url_for('add_ana') }}">
+            <div class="form-grid">
+                <div class="form-group">
+                    <label>date *</label>
+                    <input type="date" name="date" required
+                           value="{{ today }}">
+                </div>
+                <div class="form-group">
+                    <label>screen result *</label>
+                    <select name="screen_result" required>
+                        <option value="positive">positive</option>
+                        <option value="negative">negative</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>titer (as integer)</label>
+                    <select name="titer">
+                        <option value="">—</option>
+                        <option value="40">1:40</option>
+                        <option value="80">1:80</option>
+                        <option value="160">1:160</option>
+                        <option value="320">1:320</option>
+                        <option value="640">1:640</option>
+                        <option value="1280">1:1280</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>provider</label>
+                    <input type="text" name="provider"
+                           placeholder="ordering provider">
+                </div>
+            </div>
+            <div class="form-group">
+                <label>patterns <span style="color:var(--text-muted)">
+                    (comma separated, e.g. AC-4, AC-29)</span></label>
+                <input type="text" name="patterns"
+                       placeholder="AC-2, AC-4, AC-29">
+            </div>
+            <div class="form-group">
+                <label>notes</label>
+                <textarea name="notes"
+                    placeholder="lab, method, clinical context..."
+                    style="min-height:60px;"></textarea>
+            </div>
+            <div style="display:flex; gap:var(--space-md); margin-top:var(--space-md);">
+                <button type="submit" class="btn btn-primary">save</button>
+                <button type="button" class="btn btn-secondary"
+                        onclick="toggleForm('form-ana')">cancel</button>
+            </div>
+        </form>
+    </div>
+
+<!-- ANA table with inline editing -->
+{% if ana %}
+<div style="overflow-x:auto;">
+    <table class="data-table">
+        <thead>
+            <tr>
+                <th>date</th>
+                <th>result</th>
+                <th>titer</th>
+                <th>patterns</th>
+                <th>provider</th>
+                <th>notes</th>
+                <th style="width:40px;"></th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for a in ana | sort(attribute='date', reverse=True) %}
+            <!-- Read-only row -->
+            <tr id="ana-row-{{ a.id }}" class="data-row">
+                <td class="mono">{{ a.date }}</td>
+                <td>
+                    <span class="badge
+                        {% if a.screen_result == 'positive' %}badge-migraine
+                        {% else %}badge-air{% endif %}">
+                        {{ a.screen_result }}
+                    </span>
+                </td>
+                <td class="mono" style="color:var(--text-primary);">
+                    {% if a.titer_integer %}1:{{ a.titer_integer }}{% else %}—{% endif %}
+                </td>
+                <td>
+                    {% if a.patterns %}
+                        {% for p in a.patterns %}
+                            <span class="badge badge-cognitive" style="margin:1px;">{{ p }}</span>
+                        {% endfor %}
+                    {% else %}—{% endif %}
+                </td>
+                <td style="color:var(--text-muted); font-size:0.8rem;">
+                    {{ a.provider or '—' }}
+                </td>
+                <td style="color:var(--text-muted); font-size:0.8rem;
+                           max-width:200px; white-space:pre-wrap;">
+                    {{ a.notes or '' }}
+                </td>
+                <td>
+                    <button class="edit-btn" onclick="editAna({{ a.id }})" 
+                            title="edit">✎</button>
+                </td>
+            </tr>
+            
+            <!-- Edit row (hidden by default) -->
+            <tr id="ana-edit-{{ a.id }}" class="edit-row" style="display:none;">
+                <td colspan="7">
+                    <form method="POST" action="{{ url_for('update_ana', ana_id=a.id) }}">
+                        <div class="inline-edit-grid">
+                            <div class="form-group">
+                                <label>date *</label>
+                                <input type="date" name="date" required 
+                                       value="{{ a.date }}">
+                            </div>
+                            <div class="form-group">
+                                <label>screen result *</label>
+                                <select name="screen_result" required>
+                                    <option value="positive" {% if a.screen_result == 'positive' %}selected{% endif %}>positive</option>
+                                    <option value="negative" {% if a.screen_result == 'negative' %}selected{% endif %}>negative</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label>titer</label>
+                                <select name="titer">
+                                    <option value="">—</option>
+                                    <option value="40" {% if a.titer_integer == 40 %}selected{% endif %}>1:40</option>
+                                    <option value="80" {% if a.titer_integer == 80 %}selected{% endif %}>1:80</option>
+                                    <option value="160" {% if a.titer_integer == 160 %}selected{% endif %}>1:160</option>
+                                    <option value="320" {% if a.titer_integer == 320 %}selected{% endif %}>1:320</option>
+                                    <option value="640" {% if a.titer_integer == 640 %}selected{% endif %}>1:640</option>
+                                    <option value="1280" {% if a.titer_integer == 1280 %}selected{% endif %}>1:1280</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label>provider</label>
+                                <input type="text" name="provider" 
+                                       value="{{ a.provider or '' }}">
+                            </div>
+                            <div class="form-group">
+                                <label>lab facility</label>
+                                <input type="text" name="lab_facility" 
+                                       value="{{ a.lab_facility or '' }}">
+                            </div>
+                            <div class="form-group" style="grid-column: 1 / -1;">
+                                <label>patterns <span style="color:var(--text-muted);">(comma separated)</span></label>
+                                <input type="text" name="pattern" 
+                                       value="{% if a.patterns %}{{ a.patterns | join(', ') }}{% endif %}"
+                                       placeholder="AC-2, AC-4, AC-29">
+                            </div>
+                            <div class="form-group" style="grid-column: 1 / -1;">
+                                <label>notes</label>
+                                <textarea name="notes" style="min-height:60px;">{{ a.notes or '' }}</textarea>
+                            </div>
+                        </div>
+                        <div class="inline-edit-actions">
+                            <button type="submit" class="btn btn-primary btn-sm">save</button>
+                            <button type="button" class="btn btn-secondary btn-sm" 
+                                    onclick="cancelEdit({{ a.id }}, 'ana')">cancel</button>
+                            <button type="button" class="btn btn-danger btn-sm" 
+                                    id="delete-ana-{{ a.id }}"
+                                    onclick="confirmDelete({{ a.id }}, 'ana')">delete</button>
+                        </div>
+                    </form>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+    {% else %}
+    <div class="empty-state">
+    <p>No ANA results yet.</p>
+    </div>
+    {% endif %}
+</div>
+    
+
+<!-- ============================================================
+     MEDICATIONS TAB
+     ============================================================ -->
+<div class="tab-panel" id="tab-medications">
+
+    <div class="add-toggle-row">
+        <button class="btn btn-secondary"
+                onclick="toggleForm('form-medication')">
+            + add medication
+        </button>
+    
+    
+
+<!-- Export section -->
+    <details class="mobile-export-collapse">
+        <summary>export options</summary>
+        <div style="display:flex; gap:var(--space-sm); align-items:center; flex-wrap:wrap;">
+            <label style="font-size:0.85rem; color:var(--text-muted);">Export:</label>
+            <select id="export-meds-filter" style="padding:4px 8px; font-size:0.85rem;">
+                <option value="active">Active only</option>
+                <option value="all">All medications</option>
+                <option value="inactive">Inactive only</option>
+            </select>
+            <button class="btn btn-primary btn-sm" onclick="exportMedications()">
+                Download CSV ↓
+            </button>
+        </div>
+    </details>
+    </div>
+
+    <div class="add-form-panel" id="form-medication">
+        <form method="POST" action="{{ url_for('add_medication') }}">
+            <div class="form-grid">
+                <div class="form-group">
+                    <label>drug name *</label>
+                    <input type="text" name="drug_name" required
+                           placeholder="e.g. hydroxychloroquine">
+                </div>
+                <div class="form-group">
+                    <label>dose</label>
+                    <input type="number" name="dose" step="0.1"
+                           placeholder="e.g. 200">
+                </div>
+                <div class="form-group">
+                    <label>unit</label>
+                    <input type="text" name="unit"
+                           placeholder="mg, mcg, IU">
+                </div>
+                <!-- frequency  -->
+                <div class="form-group">
+                    <label>frequency</label>
+                    <select name="frequency">
+                        <option value="">—</option>
+                        <option value="one-time">one-time (injection)</option>
+                        <option value="daily">daily</option>
+                        <option value="twice daily">twice daily</option>
+                        <option value="three times daily">three times daily</option>
+                        <option value="every other day">every other day</option>
+                        <option value="taper">taper</option>
+                        <option value="weekly">weekly</option>
+                        <option value="every 2 weeks">every 2 weeks</option>
+                        <option value="every 4 weeks">every 4 weeks (monthly)</option>
+                        <option value="every 6 weeks">every 6 weeks</option>
+                        <option value="every 8 weeks">every 8 weeks</option>
+                        <option value="every 12 weeks">every 12 weeks (quarterly)</option>
+                        <option value="every 6 months">every 6 months</option>
+                        <option value="as needed">as needed</option>
+                        <option value="other">other</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>route</label>
+                    <select name="route">
+                        <option value="oral">oral</option>
+                        <option value="topical">topical</option>
+                        <option value="nasal">nasal</option>
+                        <option value="inhalant">inhalant</option>
+                        <option value="IV">IV</option>
+                        <option value="IM">IM</option>
+                        <option value="subcutaneous">subcutaneous</option>
+                        <option value="sublingual">sublingual</option>
+                        <option value="eye drops">eye drops</option>
+                        <option value="suppository">suppository</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>category</label>
+                    <select name="category">
+                        <option value="prescription">prescription</option>
+                        <option value="supplement">supplement</option>
+                        <option value="OTC">OTC</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>start date *</label>
+                    <input type="date" name="start_date" required
+                           value="{{ today }}">
+                </div>
+                <div class="form-group">
+                    <label>end date
+                        <span style="color:var(--text-muted)">(leave blank if current)</span>
+                    </label>
+                    <input type="date" name="end_date">
+                </div>
+            </div>
+            <div class="form-group">
+                <label>indication</label>
+                <input type="text" name="indication"
+                       placeholder="reason / purpose">
+            </div>
+            <div class="form-group">
+                <label style="display:flex; align-items:center; gap:var(--space-sm); cursor:pointer;">
+                    <input type="checkbox" name="is_primary_intervention" value="1"
+                           style="accent-color:var(--color-accent);">
+                    <span>Track as primary intervention on HRV and symptom charts</span>
+                </label>
+            </div>
+            <div class="form-group">
+                <label style="display:flex; align-items:center; gap:var(--space-sm); cursor:pointer;">
+                    <input type="checkbox" name="is_secondary_intervention" value="1"
+                           style="accent-color:var(--color-accent);">
+                    <span>Track as secondary intervention (reference line)</span>
+                </label>
+            </div>
+            <div class="form-group">
+                <label>notes</label>
+                <textarea name="notes"
+                    placeholder="dose changes, side effects, prescriber..."
+                    style="min-height:60px;"></textarea>
+            </div>
+            <div style="display:flex; gap:var(--space-md); margin-top:var(--space-md);">
+                <button type="submit" class="btn btn-primary">save</button>
+                <button type="button" class="btn btn-secondary"
+                        onclick="toggleForm('form-medication')">cancel</button>
+            </div>
+        </form>
+    </div>
+
+    <!-- Active medications -->
+    <!-- Adds BOTH edit (pen icon) and end (quick button) -->
+
+    <div style="overflow-x:auto;">
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>medication</th>
+                    <th>dose</th>
+                    <th>frequency</th>
+                    <th>category</th>
+                    <th>started</th>
+                    <th>indication</th>
+                    <th style="width:80px;"></th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for med in active | sort(attribute='start_date', reverse=True) %}
+                <!-- Read-only row -->
+                <tr id="med-row-{{ med.id }}" class="data-row">
+                    <td style="color:var(--text-primary);">{{ med.drug_name }}</td>
+                    <td class="mono">
+                        {% if med.dose %}{{ med.dose }}{% endif %}
+                        {% if med.unit %} {{ med.unit }}{% endif %}
+                    </td>
+                    <td style="color:var(--text-muted); font-size:0.85rem;">
+                        {{ med.frequency or '—' }}
+                    </td>
+                    <td>
+                        {% if med.category == 'prescription' %}
+                            <span class="badge badge-cognitive">prescription</span>
+                        {% elif med.category == 'injection (one-time/periodic IM/IV)' %}
+                            <span class="badge badge-migraine">injection</span>
+                        {% elif med.category == 'infusion (periodic biologic)' %}
+                            <span class="badge badge-pulmonary">infusion</span>
+                        {% elif med.category == 'supplement' %}
+                            <span class="badge badge-muscle">supplement</span>
+                        {% elif med.category == 'sublingual' %}
+                            <span class="badge badge-muscle">sublingual</span>
+                        {% elif med.category == 'OTC' %}
+                            <span class="badge badge-derm">OTC</span>
+                        {% elif med.category == 'taper' %}
+                            <span class="badge badge-derm">taper</span>
+                        {% else %}
+                            {{ med.category or '—' }}
+                        {% endif %}
+                    </td>
+                    <td class="mono">{{ med.start_date }}</td>
+                    <td style="color:var(--text-muted); font-size:0.85rem;">
+                        {{ med.indication or '—' }}
+                    </td>
+                    <td>
+                        <div style="display:flex; gap:4px; align-items:center; flex-wrap:wrap;">
+                            <button class="edit-btn" onclick="editMedication({{ med.id }})"
+                                    title="edit">✎</button>
+                            <form method="POST"
+                                  action="{{ url_for('end_medication', med_id=med.id) }}"
+                                  style="display:inline;">
+                                <input type="hidden" name="end_date" value="{{ today }}">
+                                <button type="submit" class="btn btn-secondary"
+                                        style="padding:2px 8px; font-size:0.8rem;"
+                                        onclick="return confirm('Mark {{ med.drug_name }} as ended today?')">
+                                    end
+                                </button>
+                            </form>
+                            {% if taper_by_med.get(med.id) %}
+                            <form method="POST"
+                                  action="{{ url_for('taper_delete', schedule_id=taper_by_med[med.id]['id']) }}"
+                                  style="display:inline;">
+                                <button type="submit" class="btn btn-secondary"
+                                        style="padding:2px 8px; font-size:0.8rem; color:var(--color-warning);"
+                                        onclick="return confirm('Cancel all pending reminders for {{ med.drug_name }}?')">
+                                    ↺ cancel reminders
+                                </button>
+                            </form>
+                            {% else %}
+                            <button class="btn btn-secondary"
+                                    style="padding:2px 8px; font-size:0.8rem; color:var(--color-accent);"
+                                    onclick="toggleTaperWizard({{ med.id }})">
+                                ↻ set reminders
+                            </button>
+                            {% endif %}
+                        </div>
+                    </td>
+                </tr>
+
+                <!-- Taper wizard panel -->
+                <tr id="taper-wizard-{{ med.id }}" style="display:none;">
+                    <td colspan="7">
+                        <div style="padding:var(--space-md); background:var(--bg-elevated); border:1px solid var(--border-subtle); border-radius:var(--radius-md); margin:var(--space-xs) 0;">
+                            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:var(--space-md);">
+                                <strong style="color:var(--text-primary);">taper reminder setup — {{ med.drug_name }}</strong>
+                                <button class="btn btn-secondary" style="padding:2px 10px; font-size:0.8rem;"
+                                        onclick="document.getElementById('taper-wizard-{{ med.id }}').style.display='none'">
+                                    cancel
+                                </button>
+                            </div>
+
+                            {% if not ntfy_configured %}
+                            <div style="background:var(--bg-card); border:1px solid var(--border-subtle); border-radius:var(--radius-sm); padding:var(--space-sm) var(--space-md); margin-bottom:var(--space-md); font-size:0.85rem; color:var(--text-muted);">
+                                <strong style="color:var(--text-primary);">Phone notifications not configured.</strong>
+                                To get push notifications on your phone, add <code>ntfy_topic</code> and <code>ntfy_server</code> to your <code>config.json</code>, then install the <a href="https://ntfy.sh" target="_blank" style="color:var(--color-accent);">ntfy app</a> on your phone and subscribe to your topic. Reminders will still be scheduled and visible in the checklist on the daily entry page.
+                            </div>
+                            {% endif %}
+
+                            <form method="POST" action="{{ url_for('taper_create') }}">
+                                <input type="hidden" name="medication_id" value="{{ med.id }}">
+                                <input type="hidden" name="drug_name" value="{{ med.drug_name }}">
+                                <input type="hidden" name="unit" value="{{ med.unit or 'tablet(s)' }}">
+
+                                <div style="display:flex; gap:var(--space-md); margin-bottom:var(--space-md); align-items:center; flex-wrap:wrap;">
+                                    <div class="form-group" style="margin:0; flex:0 0 auto;">
+                                        <label style="font-size:0.85rem;">taper start date</label>
+                                        <input type="date" name="start_date"
+                                               id="taper-start-{{ med.id }}"
+                                               value="{{ today }}"
+                                               onchange="rebuildTaperRows({{ med.id }})"
+                                               style="padding:4px 8px; font-size:0.9rem;">
+                                    </div>
+                                    <div style="font-size:0.8rem; color:var(--text-muted); padding-top:var(--space-lg);">
+                                        Edit times and amounts below, then save.
+                                    </div>
+                                </div>
+
+                                <div id="taper-days-{{ med.id }}" style="display:flex; flex-direction:column; gap:var(--space-sm); margin-bottom:var(--space-md);">
+                                    <!-- Populated by JS -->
+                                </div>
+
+                                <div style="display:flex; gap:var(--space-md);">
+                                    <button type="submit" class="btn btn-primary"
+                                            style="padding:6px 18px;">
+                                        activate reminders
+                                    </button>
+                                </div>
+                            </form>
+                        </div>
+                    </td>
+                </tr>
+
+                <!-- Edit row (same as before, full edit form) -->
+                <tr id="med-edit-{{ med.id }}" class="edit-row" style="display:none;">
+                    <td colspan="7">
+                        <form method="POST" action="{{ url_for('update_medication', med_id=med.id) }}">
+                            <div class="inline-edit-grid">
+                                <div class="form-group">
+                                    <label>medication *</label>
+                                    <input type="text" name="drug_name" required 
+                                           value="{{ med.drug_name }}">
+                                </div>
+                                <div class="form-group">
+                                    <label>dose</label>
+                                    <input type="number" name="dose" step="0.01" 
+                                           value="{{ med.dose or '' }}">
+                                </div>
+                                <div class="form-group">
+                                    <label>unit</label>
+                                    <input type="text" name="unit" 
+                                           value="{{ med.unit or '' }}">
+                                </div>
+                                <div class="form-group">
+                                    <label>frequency</label>
+                                    <select name="frequency">
+                                        <option value="">—</option>
+                                        <option value="daily" {% if med.frequency == 'daily' %}selected{% endif %}>daily</option>
+                                        <option value="twice daily" {% if med.frequency == 'twice daily' %}selected{% endif %}>twice daily</option>
+                                        <option value="three times daily" {% if med.frequency == 'three times daily' %}selected{% endif %}>three times daily</option>
+                                        <option value="as needed" {% if med.frequency == 'as needed' %}selected{% endif %}>as needed</option>
+                                        <option value="weekly" {% if med.frequency == 'weekly' %}selected{% endif %}>weekly</option>
+                                        <option value="taper" {% if med.frequency == 'taper' %}selected{% endif %}>taper</option>
+                                        <option value="one-time (injection)" {% if med.frequency == 'one-time (injection)' %}selected{% endif %}>one-time (injection)</option>
+                                        <option value="every 2 weeks" {% if med.frequency == 'every 2 weeks' %}selected{% endif %}>every 2 weeks</option>
+                                        <option value="every 4 weeks (monthly)" {% if med.frequency == 'every 4 weeks (monthly)' %}selected{% endif %}>every 4 weeks (monthly)</option>
+                                        <option value="every 6 weeks" {% if med.frequency == 'every 6 weeks' %}selected{% endif %}>every 6 weeks</option>
+                                        <option value="every 8 weeks" {% if med.frequency == 'every 8 weeks' %}selected{% endif %}>every 8 weeks</option>
+                                        <option value="every 12 weeks (quarterly)" {% if med.frequency == 'every 12 weeks (quarterly)' %}selected{% endif %}>every 12 weeks (quarterly)</option>
+                                        <option value="every 6 months" {% if med.frequency == 'every 6 months' %}selected{% endif %}>every 6 months</option>
+                                    </select>
+                                </div>
+                                <div class="form-group">
+                                    <label>category</label>
+                                    <select name="category">
+                                        <option value="">—</option>
+                                        <option value="prescription" {% if med.category == 'prescription' %}selected{% endif %}>prescription</option>
+                                        <option value="injection (one-time/periodic IM/IV)" {% if med.category == 'injection (one-time/periodic IM/IV)' %}selected{% endif %}>injection (one-time/periodic IM/IV)</option>
+                                        <option value="infusion (periodic biologic)" {% if med.category == 'infusion (periodic biologic)' %}selected{% endif %}>infusion (periodic biologic)</option>
+                                        <option value="supplement" {% if med.category == 'supplement' %}selected{% endif %}>supplement</option>
+                                        <option value="OTC" {% if med.category == 'OTC' %}selected{% endif %}>OTC</option>
+                                        <option value="taper" {% if med.category == 'taper' %}selected{% endif %}>taper</option>
+                                    </select>
+                                </div>
+                                <div class="form-group">
+                                    <label>start date *</label>
+                                    <input type="date" name="start_date" required 
+                                           value="{{ med.start_date }}">
+                                </div>
+                                <div class="form-group">
+                                    <label>end date</label>
+                                    <input type="date" name="end_date" 
+                                           value="{{ med.end_date or '' }}">
+                                </div>
+                                <div class="form-group" style="grid-column: 1 / -1;">
+                                    <label>indication</label>
+                                    <input type="text" name="indication" 
+                                           value="{{ med.indication or '' }}">
+                                </div>
+                                <div class="form-group" style="grid-column: 1 / -1;">
+                                    <label style="display:flex; align-items:center; gap:var(--space-sm); cursor:pointer;">
+                                        <input type="checkbox" name="is_primary_intervention" value="1"
+                                               {% if med.is_primary_intervention %}checked{% endif %}
+                                               style="accent-color:var(--color-accent);">
+                                        <span>Track as primary intervention on HRV and symptom charts</span>
+                                    </label>
+                                </div>
+                                <div class="form-group" style="grid-column: 1 / -1;">
+                                    <label style="display:flex; align-items:center; gap:var(--space-sm); cursor:pointer;">
+                                        <input type="checkbox" name="is_secondary_intervention" value="1"
+                                               {% if med.is_secondary_intervention %}checked{% endif %}
+                                               style="accent-color:var(--color-accent);">
+                                        <span>Track as secondary intervention (reference line)</span>
+                                    </label>
+                                </div>
+                                <div class="form-group" style="grid-column: 1 / -1;">
+                                    <label>notes</label>
+                                    <textarea name="notes" style="min-height:60px;">{{ med.notes or '' }}</textarea>
+                                </div>
+                            </div>
+                            <div class="inline-edit-actions">
+                                <button type="submit" class="btn btn-primary btn-sm">save</button>
+                                <button type="button" class="btn btn-secondary btn-sm" 
+                                        onclick="cancelEdit({{ med.id }}, 'med')">cancel</button>
+                                <button type="button" class="btn btn-danger btn-sm" 
+                                        id="delete-med-{{ med.id }}"
+                                        onclick="confirmDelete({{ med.id }}, 'med')">delete</button>
+                            </div>
+                        </form>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+<!-- INACTIVE MEDICATIONS TABLE -->
+<!-- Adds edit/delete to fix mistakes on ended meds -->
+
+    {% if inactive %}
+    <div class="section-header" style="margin-top:var(--space-xl);">
+        <h3 class="section-title" style="color:var(--text-muted);">history</h3>
+    </div>
+    <div style="overflow-x:auto;">
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>medication</th>
+                    <th>dose</th>
+                    <th>started</th>
+                    <th>ended</th>
+                    <th>indication</th>
+                    <th style="width:40px;"></th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for med in inactive | sort(attribute='end_date', reverse=True) %}
+                <!-- Read-only row -->
+                <tr id="med-inactive-row-{{ med.id }}" class="data-row" style="opacity:0.6;">
+                    <td>{{ med.drug_name }}</td>
+                    <td class="mono">
+                        {% if med.dose %}{{ med.dose }}{% endif %}
+                        {% if med.unit %} {{ med.unit }}{% endif %}
+                    </td>
+                    <td class="mono">{{ med.start_date }}</td>
+                    <td class="mono">{{ med.end_date }}</td>
+                    <td style="color:var(--text-muted); font-size:0.85rem;">
+                        {{ med.indication or '—' }}
+                    </td>
+                    <td>
+                        <button class="edit-btn" onclick="editInactiveMedication({{ med.id }})" 
+                                title="edit">✎</button>
+                    </td>
+                </tr>
+                
+                <!-- Edit row -->
+                <tr id="med-inactive-edit-{{ med.id }}" class="edit-row" style="display:none;">
+                    <td colspan="6">
+                        <form method="POST" action="{{ url_for('update_medication', med_id=med.id) }}">
+                            <div class="inline-edit-grid">
+                                <div class="form-group">
+                                    <label>medication *</label>
+                                    <input type="text" name="drug_name" required
+                                           value="{{ med.drug_name }}">
+                                </div>
+                                <div class="form-group">
+                                    <label>dose</label>
+                                    <input type="number" name="dose" step="0.01"
+                                           value="{{ med.dose or '' }}">
+                                </div>
+                                <div class="form-group">
+                                    <label>unit</label>
+                                    <input type="text" name="unit"
+                                           value="{{ med.unit or '' }}">
+                                </div>
+                                <div class="form-group">
+                                    <label>frequency</label>
+                                    <select name="frequency">
+                                        <option value="">—</option>
+                                        <option value="daily" {% if med.frequency == 'daily' %}selected{% endif %}>daily</option>
+                                        <option value="twice daily" {% if med.frequency == 'twice daily' %}selected{% endif %}>twice daily</option>
+                                        <option value="three times daily" {% if med.frequency == 'three times daily' %}selected{% endif %}>three times daily</option>
+                                        <option value="as needed" {% if med.frequency == 'as needed' %}selected{% endif %}>as needed</option>
+                                        <option value="weekly" {% if med.frequency == 'weekly' %}selected{% endif %}>weekly</option>
+                                        <option value="taper" {% if med.frequency == 'taper' %}selected{% endif %}>taper</option>
+                                        <option value="one-time (injection)" {% if med.frequency == 'one-time (injection)' %}selected{% endif %}>one-time (injection)</option>
+                                        <option value="every 2 weeks" {% if med.frequency == 'every 2 weeks' %}selected{% endif %}>every 2 weeks</option>
+                                        <option value="every 4 weeks (monthly)" {% if med.frequency == 'every 4 weeks (monthly)' %}selected{% endif %}>every 4 weeks (monthly)</option>
+                                        <option value="every 6 weeks" {% if med.frequency == 'every 6 weeks' %}selected{% endif %}>every 6 weeks</option>
+                                        <option value="every 8 weeks" {% if med.frequency == 'every 8 weeks' %}selected{% endif %}>every 8 weeks</option>
+                                        <option value="every 12 weeks (quarterly)" {% if med.frequency == 'every 12 weeks (quarterly)' %}selected{% endif %}>every 12 weeks (quarterly)</option>
+                                        <option value="every 6 months" {% if med.frequency == 'every 6 months' %}selected{% endif %}>every 6 months</option>
+                                    </select>
+                                </div>
+                                <div class="form-group">
+                                    <label>category</label>
+                                    <select name="category">
+                                        <option value="">—</option>
+                                        <option value="prescription" {% if med.category == 'prescription' %}selected{% endif %}>prescription</option>
+                                        <option value="injection (one-time/periodic IM/IV)" {% if med.category == 'injection (one-time/periodic IM/IV)' %}selected{% endif %}>injection (one-time/periodic IM/IV)</option>
+                                        <option value="infusion (periodic biologic)" {% if med.category == 'infusion (periodic biologic)' %}selected{% endif %}>infusion (periodic biologic)</option>
+                                        <option value="supplement" {% if med.category == 'supplement' %}selected{% endif %}>supplement</option>
+                                        <option value="OTC" {% if med.category == 'OTC' %}selected{% endif %}>OTC</option>
+                                        <option value="taper" {% if med.category == 'taper' %}selected{% endif %}>taper</option>
+                                    </select>
+                                </div>
+                                <div class="form-group">
+                                    <label>start date *</label>
+                                    <input type="date" name="start_date" required
+                                           value="{{ med.start_date }}">
+                                </div>
+                                <div class="form-group">
+                                    <label>end date</label>
+                                    <input type="date" name="end_date"
+                                           value="{{ med.end_date or '' }}"
+                                           placeholder="Clear to reactivate">
+                                </div>
+                                <div class="form-group" style="grid-column: 1 / -1;">
+                                    <label>indication</label>
+                                    <input type="text" name="indication"
+                                           value="{{ med.indication or '' }}">
+                                </div>
+                                <div class="form-group" style="grid-column: 1 / -1;">
+                                    <label style="display:flex; align-items:center; gap:var(--space-sm); cursor:pointer;">
+                                        <input type="checkbox" name="is_primary_intervention" value="1"
+                                               {% if med.is_primary_intervention %}checked{% endif %}
+                                               style="accent-color:var(--color-accent);">
+                                        <span>Track as primary intervention on HRV and symptom charts</span>
+                                    </label>
+                                </div>
+                                <div class="form-group" style="grid-column: 1 / -1;">
+                                    <label style="display:flex; align-items:center; gap:var(--space-sm); cursor:pointer;">
+                                        <input type="checkbox" name="is_secondary_intervention" value="1"
+                                               {% if med.is_secondary_intervention %}checked{% endif %}
+                                               style="accent-color:var(--color-accent);">
+                                        <span>Track as secondary intervention (reference line)</span>
+                                    </label>
+                                </div>
+                                <div class="form-group" style="grid-column: 1 / -1;">
+                                    <label>notes</label>
+                                    <textarea name="notes" style="min-height:60px;">{{ med.notes or '' }}</textarea>
+                                </div>
+                            </div>
+                            <div class="inline-edit-actions">
+                                <button type="submit" class="btn btn-primary btn-sm">save</button>
+                                <button type="button" class="btn btn-secondary btn-sm" 
+                                        onclick="cancelEdit({{ med.id }}, 'med-inactive')">cancel</button>
+                                <button type="button" class="btn btn-danger btn-sm" 
+                                        id="delete-med-inactive-{{ med.id }}"
+                                        onclick="confirmDelete({{ med.id }}, 'med-inactive')">delete</button>
+                            </div>
+                        </form>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% endif %}
+</div>
+
+<!-- ============================================================
+     EVENTS TAB
+     ============================================================ -->
+<div class="tab-panel" id="tab-events">
+    <div class="add-toggle-row">
+        <button class="btn btn-secondary" onclick="toggleForm('form-event')">
+            + add event
+        </button>
+
+    <!-- Export section -->
+    <details class="mobile-export-collapse">
+        <summary>export options</summary>
+        <div style="display:flex; gap:var(--space-sm); align-items:center; flex-wrap:wrap;">
+            <label style="font-size:0.85rem; color:var(--text-muted);">Export:</label>
+            <input type="date" id="export-events-start" style="padding:4px 8px; font-size:0.85rem;">
+            <span style="color:var(--text-muted);">to</span>
+            <input type="date" id="export-events-end" style="padding:4px 8px; font-size:0.85rem;">
+            <select id="export-events-type" style="padding:4px 8px; font-size:0.85rem;">
+                <option value="all">All types</option>
+                <option value="encounter">Encounters only</option>
+                <option value="biopsy">Biopsies only</option>
+                <option value="injection">Injections only</option>
+                <option value="procedure">Procedures only</option>
+                <option value="lab draw">Lab draws only</option>
+                <option value="imaging">Imaging only</option>
+                <option value="ER visit">ER visits only</option>
+                <option value="hospitalization">Hospitalizations only</option>
+                <option value="other">Other only</option>
+            </select>
+            <button class="btn btn-primary btn-sm" onclick="exportEvents()">
+                Download CSV ↓
+            </button>
+        </div>
+    </details>
+</div>
+
+
+
+
+    <div class="add-form-panel" id="form-event">
+        <form method="POST" action="{{ url_for('add_event') }}">
+            <div class="form-grid">
+                <div class="form-group">
+                    <label>date *</label>
+                    <input type="date" name="date" required
+                           value="{{ today }}">
+                </div>
+                <div class="form-group">
+                    <label>event type *</label>
+                    <select name="event_type" required>
+                        <option value="encounter">encounter</option>
+                        <option value="biopsy">biopsy</option>
+                        <option value="injection">injection</option>
+                        <option value="procedure">procedure</option>
+                        <option value="lab draw">lab draw</option>
+                        <option value="imaging">imaging</option>
+                        <option value="ER visit">ER visit</option>
+                        <option value="hospitalization">hospitalization</option>
+                        <option value="other">other</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>provider</label>
+                    <input type="text" name="provider"
+                           placeholder="provider name">
+                </div>
+                <div class="form-group">
+                    <label>facility</label>
+                    <input type="text" name="facility"
+                           placeholder="clinic or hospital name">
+                </div>
+                <div class="form-group">
+                    <label>follow-up date</label>
+                    <input type="date" name="follow_up_date">
+                </div>
+            </div>
+            <div class="form-group">
+                <label>notes</label>
+                <textarea name="notes"
+                    placeholder="diagnoses, findings, path reports, medications started..."
+                    style="min-height:100px;"></textarea>
+            </div>
+            <div style="display:flex; gap:var(--space-md); margin-top:var(--space-md);">
+                <button type="submit" class="btn btn-primary">save</button>
+                <button type="button" class="btn btn-secondary"
+                        onclick="toggleForm('form-event')">cancel</button>
+            </div>
+        </form>
+    </div>
+
+   <!-- Events table with inline editing -->
+{% if events %}
+<div style="overflow-x:auto;">
+    <table class="data-table">
+        <thead>
+            <tr>
+                <th>date</th>
+                <th>type</th>
+                <th>provider</th>
+                <th>facility</th>
+                <th>follow-up</th>
+                <th>notes</th>
+                <th style="width:40px;"></th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for e in events | sort(attribute='date', reverse=True) %}
+            <!-- Read-only row -->
+            <tr id="event-row-{{ e.id }}" class="data-row">
+                <td class="mono">{{ e.date }}</td>
+                <td>
+                    <span class="badge badge-cognitive">{{ e.event_type }}</span>
+                </td>
+                <td style="color:var(--text-muted); font-size:0.85rem;">
+                    {{ e.provider or '—' }}
+                </td>
+                <td style="color:var(--text-muted); font-size:0.85rem;">
+                    {{ e.facility or '—' }}
+                </td>
+                <td class="mono" style="color:var(--text-muted); font-size:0.85rem;">
+                    {{ e.follow_up_date or '—' }}
+                </td>
+                <td style="color:var(--text-muted); font-size:0.8rem;
+                           max-width:240px; white-space:pre-wrap;">
+                    {{ e.notes or '' }}
+                </td>
+                <td>
+                    <button class="edit-btn" onclick="editEvent({{ e.id }})" 
+                            title="edit">✎</button>
+                </td>
+            </tr>
+            
+            <!-- Edit row (hidden by default) -->
+            <tr id="event-edit-{{ e.id }}" class="edit-row" style="display:none;">
+                <td colspan="7">
+                    <form method="POST" action="{{ url_for('update_event', event_id=e.id) }}">
+                        <div class="inline-edit-grid">
+                            <div class="form-group">
+                                <label>date *</label>
+                                <input type="date" name="date" required 
+                                       value="{{ e.date }}">
+                            </div>
+                            <div class="form-group">
+                                <label>event type *</label>
+                                <select name="event_type" required>
+                                    <option value="encounter" {% if e.event_type == 'encounter' %}selected{% endif %}>encounter</option>
+                                    <option value="biopsy" {% if e.event_type == 'biopsy' %}selected{% endif %}>biopsy</option>
+                                    <option value="injection" {% if e.event_type == 'injection' %}selected{% endif %}>injection</option>
+                                    <option value="procedure" {% if e.event_type == 'procedure' %}selected{% endif %}>procedure</option>
+                                    <option value="lab draw" {% if e.event_type == 'lab draw' %}selected{% endif %}>lab draw</option>
+                                    <option value="imaging" {% if e.event_type == 'imaging' %}selected{% endif %}>imaging</option>
+                                    <option value="ER visit" {% if e.event_type == 'ER visit' %}selected{% endif %}>ER visit</option>
+                                    <option value="hospitalization" {% if e.event_type == 'hospitalization' %}selected{% endif %}>hospitalization</option>
+                                    <option value="other" {% if e.event_type == 'other' %}selected{% endif %}>other</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label>provider</label>
+                                <input type="text" name="provider" 
+                                       value="{{ e.provider or '' }}">
+                            </div>
+                            <div class="form-group">
+                                <label>facility</label>
+                                <input type="text" name="facility" 
+                                       value="{{ e.facility or '' }}">
+                            </div>
+                            <div class="form-group">
+                                <label>follow-up date</label>
+                                <input type="date" name="follow_up_date" 
+                                       value="{{ e.follow_up_date or '' }}">
+                            </div>
+                            <div class="form-group" style="grid-column: 1 / -1;">
+                                <label>notes</label>
+                                <textarea name="notes" style="min-height:80px;">{{ e.notes or '' }}</textarea>
+                            </div>
+                        </div>
+                        <div class="inline-edit-actions">
+                            <button type="submit" class="btn btn-primary btn-sm">save</button>
+                            <button type="button" class="btn btn-secondary btn-sm" 
+                                    onclick="cancelEdit({{ e.id }}, 'event')">cancel</button>
+                            <button type="button" class="btn btn-danger btn-sm" 
+                                    id="delete-event-{{ e.id }}"
+                                    onclick="confirmDelete({{ e.id }}, 'event')">delete</button>
+                        </div>
+                    </form>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% else %}
+<div class="empty-state">
+    <p>No clinical events recorded yet.</p>
+</div>
+{% endif %}
+</div>
+
+
+
+<!--============================================================
+CLINICIANS TAB
+============================================================ -->
+<div class="tab-panel" id="tab-clinicians">
+
+    <div class="add-toggle-row" style="display:flex; justify-content:space-between; align-items:center; margin-bottom:var(--space-md);">
+    <div style="display:flex; gap:var(--space-sm); flex-wrap:wrap;">
+    <button class="btn btn-secondary" onclick="toggleForm('form-clinician')">
+        + add clinician
+    </button>
+    <a class="btn btn-secondary" href="{{ url_for('portals_manage') }}">
+        share portal links →
+    </a>
+    </div>
+
+    <!-- Export button -->
+    <button class="btn btn-primary btn-sm" onclick="exportClinicians()">
+        Download CSV ↓
+    </button>
+</div>
+
+    <div class="add-form-panel" id="form-clinician">
+        <form method="POST" action="{{ url_for('add_clinician') }}">
+            <div class="form-grid">
+                <div class="form-group">
+                    <label>name *</label>
+                    <input type="text" name="name" required
+                           placeholder="Dr. Jane Smith">
+                </div>
+                <div class="form-group">
+                    <label>specialty *</label>
+                    <input type="text" name="specialty" required
+                           placeholder="rheumatology, dermatology, etc.">
+                </div>
+                <div class="form-group">
+                    <label>clinic name</label>
+                    <input type="text" name="clinic_name"
+                           placeholder="OU Health, Integris, etc.">
+                </div>
+                <div class="form-group">
+                    <label>phone</label>
+                    <input type="tel" name="phone"
+                           placeholder="(405) 555-1234">
+                </div>
+                <div class="form-group">
+                    <label>email / portal</label>
+                    <input type="text" name="email"
+                           placeholder="portal URL or email">
+                </div>
+                <div class="form-group">
+                    <label>network</label>
+                    <input type="text" name="network"
+                           placeholder="OU Physicians, Integris, etc.">
+                </div>
+            </div>
+            <div class="form-group">
+                <label>address</label>
+                <input type="text" name="address"
+                       placeholder="full clinic address">
+            </div>
+            <div class="form-group">
+                <label>notes</label>
+                <textarea name="notes"
+                    placeholder="what you see them for, referral source, appointment frequency..."
+                    style="min-height:60px;"></textarea>
+            </div>
+            <div style="display:flex; gap:var(--space-md); margin-top:var(--space-md);">
+                <button type="submit" class="btn btn-primary">save</button>
+                <button type="button" class="btn btn-secondary"
+                        onclick="toggleForm('form-clinician')">cancel</button>
+            </div>
+        </form>
+    </div>
+
+    <!-- Clinicians table with inline editing -->
+    {% if clinicians %}
+    <div style="overflow-x:auto;">
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>name</th>
+                    <th>specialty</th>
+                    <th>clinic</th>
+                    <th>phone</th>
+                    <th>email/portal</th>
+                    <th>network</th>
+                    <th style="width:40px;"></th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for c in clinicians | sort(attribute='name') %}
+                <!-- Read-only row -->
+                <tr id="clinician-row-{{ c.id }}" class="data-row">
+                    <td style="color:var(--text-primary);">{{ c.name }}</td>
+                    <td>
+                        <span class="badge badge-cognitive">{{ c.specialty }}</span>
+                    </td>
+                    <td style="color:var(--text-muted); font-size:0.85rem;">
+                        {{ c.clinic_name or '—' }}
+                    </td>
+                    <td style="color:var(--text-muted); font-size:0.85rem; font-family:var(--font-mono);">
+                        {{ c.phone or '—' }}
+                    </td>
+                    <td style="color:var(--text-muted); font-size:0.85rem; max-width:200px; overflow:hidden; text-overflow:ellipsis;">
+                        {{ c.email or '—' }}
+                    </td>
+                    <td style="color:var(--text-muted); font-size:0.85rem;">
+                        {{ c.network or '—' }}
+                    </td>
+                    <td>
+                        <button class="edit-btn" onclick="editClinician({{ c.id }})" 
+                                title="edit">✎</button>
+                    </td>
+                </tr>
+                <!--Edit row, hidden by default-->
+                <tr id="clinician-edit-{{ c.id }}" class="edit-row" style="display:none;">
+                    <td colspan="7">
+                        <form method="POST" action="{{ url_for('update_clinician', clinician_id=c.id) }}">
+                            <div class="inline-edit-grid">
+                                <div class="form-group">
+                                    <label>name *</label>
+                                    <input type="text" name="name" required 
+                                           value="{{ c.name }}">
+                                </div>
+                                <div class="form-group">
+                                    <label>specialty *</label>
+                                    <input type="text" name="specialty" required 
+                                           value="{{ c.specialty }}">
+                                </div>
+                                <div class="form-group">
+                                    <label>clinic name</label>
+                                    <input type="text" name="clinic_name" 
+                                           value="{{ c.clinic_name or '' }}">
+                                </div>
+                                <div class="form-group">
+                                    <label>phone</label>
+                                    <input type="tel" name="phone" 
+                                           value="{{ c.phone or '' }}">
+                                </div>
+                                <div class="form-group">
+                                    <label>email/portal</label>
+                                    <input type="text" name="email" 
+                                           value="{{ c.email or '' }}">
+                                </div>
+                                <div class="form-group">
+                                    <label>network</label>
+                                    <input type="text" name="network" 
+                                           value="{{ c.network or '' }}">
+                                </div>
+                                <div class="form-group" style="grid-column: 1 / -1;">
+                                    <label>address</label>
+                                    <input type="text" name="address" 
+                                           value="{{ c.address or '' }}">
+                                </div>
+                                <div class="form-group" style="grid-column: 1 / -1;">
+                                    <label>notes</label>
+                                    <textarea name="notes" style="min-height:60px;">{{ c.notes or '' }}</textarea>
+                                </div>
+                            </div>
+                            <div class="inline-edit-actions">
+                                <button type="submit" class="btn btn-primary btn-sm">save</button>
+                                <button type="button" class="btn btn-secondary btn-sm" 
+                                        onclick="cancelEdit({{ c.id }}, 'clinician')">cancel</button>
+                                <button type="button" class="btn btn-danger btn-sm" 
+                                        id="delete-clinician-{{ c.id }}"
+                                        onclick="confirmDelete({{ c.id }}, 'clinician')">delete</button>
+                            </div>
+                        </form>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <div class="empty-state">
+        <p>No clinicians recorded yet.</p>
+    </div>
+    {% endif %}
+</div>
+
+<!-- ============================================================
+     BACKFILL TAB
+     ============================================================ -->
+<div class="tab-panel" id="tab-backfill">
+    <a id="backfill"></a>
+
+    {% if request.args.get('msg') %}
+    <div class="card" style="margin-bottom:var(--space-md); border-left:4px solid var(--color-success); padding:var(--space-sm) var(--space-md);">
+        <span style="font-size:0.9rem; color:var(--text-secondary);">{{ request.args.get('msg') }}</span>
+    </div>
+    {% endif %}
+
+    <div class="card" style="margin-bottom:var(--space-xl);">
+        <div class="card-title">record past flare event</div>
+        <p style="font-size:0.85rem; color:var(--text-muted); margin-bottom:var(--space-md);">
+            Use this to backfill flare events you didn't log at the time — ER visits, major flares during tracking gaps, etc.
+            This will only set the flare fields; it won't overwrite any other data you've already entered for that date.
+        </p>
+        <form method="POST" action="{{ url_for('backfill_flare') }}">
+            <div class="form-grid">
+                <div class="form-group">
+                    <label>date *</label>
+                    <input type="date" name="date" required max="{{ today }}">
+                </div>
+                <div class="form-group">
+                    <label>severity *</label>
+                    <div style="display:flex; gap:var(--space-md); margin-top:4px;">
+                        <label style="font-size:0.85rem;">
+                            <input type="radio" name="flare_severity" value="minor"> minor
+                        </label>
+                        <label style="font-size:0.85rem;">
+                            <input type="radio" name="flare_severity" value="major" checked> major
+                        </label>
+                        <label style="font-size:0.85rem;">
+                            <input type="radio" name="flare_severity" value="er_visit"> ER visit
+                        </label>
+                    </div>
+                </div>
+                <div class="form-group" style="grid-column: 1 / -1;">
+                    <label>notes</label>
+                    <textarea name="notes" rows="2" placeholder="what happened, what preceded it, etc."></textarea>
+                </div>
+            </div>
+            <button type="submit" class="btn btn-primary" style="margin-top:var(--space-sm);">
+                record flare
+            </button>
+        </form>
+    </div>
+
+    {% if flare_history %}
+    <div class="card">
+        <div class="card-title">flare history</div>
+        <div class="table-wrapper">
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>date</th>
+                        <th>severity</th>
+                        <th>notes</th>
+                        <th style="width:80px;"></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for f in flare_history %}
+                    <tr id="flare-row-{{ loop.index }}">
+                        <td>{{ f.date }}</td>
+                        <td>
+                            {% if f.flare_severity == 'er_visit' %}
+                                <span style="color:#ff4444; font-weight:600;">ER visit</span>
+                            {% elif f.flare_severity == 'major' %}
+                                <span style="color:var(--color-danger); font-weight:600;">major</span>
+                            {% else %}
+                                <span style="color:var(--color-warning);">minor</span>
+                            {% endif %}
+                        </td>
+                        <td style="font-size:0.85rem; color:var(--text-muted);">{{ f.notes or '' }}</td>
+                        <td>
+                            <div style="display:flex; gap:4px;">
+                                <button class="btn btn-secondary btn-sm"
+                                        onclick="document.getElementById('flare-edit-{{ loop.index }}').style.display =
+                                                 document.getElementById('flare-edit-{{ loop.index }}').style.display === 'none' ? 'table-row' : 'none'"
+                                        title="edit">edit</button>
+                                <form method="POST" action="{{ url_for('backfill_flare_delete') }}" style="margin:0;"
+                                      onsubmit="return confirm('Remove flare on {{ f.date }}?')">
+                                    <input type="hidden" name="date" value="{{ f.date }}">
+                                    <button type="submit" class="btn btn-danger btn-sm" title="delete">del</button>
+                                </form>
+                            </div>
+                        </td>
+                    </tr>
+                    <tr id="flare-edit-{{ loop.index }}" style="display:none;">
+                        <td colspan="4">
+                            <form method="POST" action="{{ url_for('backfill_flare_update') }}">
+                                <input type="hidden" name="date" value="{{ f.date }}">
+                                <div style="display:flex; gap:var(--space-md); align-items:center; flex-wrap:wrap;">
+                                    <div style="display:flex; gap:var(--space-sm);">
+                                        <label style="font-size:0.85rem;">
+                                            <input type="radio" name="flare_severity" value="minor"
+                                                {% if f.flare_severity == 'minor' %}checked{% endif %}> minor
+                                        </label>
+                                        <label style="font-size:0.85rem;">
+                                            <input type="radio" name="flare_severity" value="major"
+                                                {% if f.flare_severity == 'major' %}checked{% endif %}> major
+                                        </label>
+                                        <label style="font-size:0.85rem;">
+                                            <input type="radio" name="flare_severity" value="er_visit"
+                                                {% if f.flare_severity == 'er_visit' %}checked{% endif %}> ER visit
+                                        </label>
+                                    </div>
+                                    <input type="text" name="notes" value="{{ f.notes or '' }}"
+                                           placeholder="notes" style="flex:1; min-width:150px;">
+                                    <button type="submit" class="btn btn-primary btn-sm">save</button>
+                                </div>
+                            </form>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+    {% else %}
+    <div class="empty-state">
+        <p>No flare events recorded yet.</p>
+    </div>
+    {% endif %}
+</div>
+
+<!-- ============================================================
+     DOCUMENTS TAB
+     ============================================================ -->
+<div class="tab-panel" id="tab-documents">
+
+    <div class="add-toggle-row" style="margin-bottom:var(--space-md);">
+        <button class="btn btn-secondary" onclick="toggleForm('form-document')">
+            + upload document
+        </button>
+    </div>
+
+    <div class="add-form-panel" id="form-document">
+        <form method="POST" action="{{ url_for('add_document') }}" enctype="multipart/form-data">
+            <div class="form-grid">
+                <div class="form-group">
+                    <label>PDF file *</label>
+                    <input type="file" name="pdf_file" accept="application/pdf,.pdf" required>
+                </div>
+                <div class="form-group">
+                    <label>title *</label>
+                    <input type="text" name="title" required
+                           placeholder="e.g. Rheumatology — Heinlen — ER follow-up">
+                </div>
+                <div class="form-group">
+                    <label>date</label>
+                    <input type="date" name="date">
+                </div>
+                <div class="form-group">
+                    <label>type</label>
+                    <select name="doc_type">
+                        <option value="">—</option>
+                        <option>clinic note</option>
+                        <option>lab report</option>
+                        <option>pathology</option>
+                        <option>imaging</option>
+                        <option>other</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>specialty</label>
+                    <input type="text" name="specialty" placeholder="e.g. rheumatology">
+                </div>
+                <div class="form-group">
+                    <label>provider</label>
+                    <input type="text" name="provider" placeholder="e.g. Dr. Smith">
+                </div>
+                <div class="form-group">
+                    <label>facility</label>
+                    <input type="text" name="facility">
+                </div>
+            </div>
+            <div class="form-group">
+                <label>summary (searchable — what the note says)</label>
+                <textarea name="summary" rows="3"
+                    placeholder="Assessment / plan / key findings — this is the text search looks through."></textarea>
+            </div>
+            <button type="submit" class="btn btn-primary">upload →</button>
+        </form>
+    </div>
+
+    {% if documents %}
+    <div style="overflow-x:auto;">
+    <table class="data-table">
+        <thead>
+            <tr><th>date</th><th>title</th><th>type</th><th>provider</th><th></th></tr>
+        </thead>
+        <tbody>
+            {% for d in documents %}
+            <tr>
+                <td>{{ d.date or '—' }}</td>
+                <td>{{ d.title }}{% if d.specialty %}
+                    <span style="color:var(--text-muted);font-size:0.85em;">· {{ d.specialty }}</span>{% endif %}</td>
+                <td>{{ d.doc_type or '' }}</td>
+                <td>{{ d.provider or '' }}</td>
+                <td style="white-space:nowrap;">
+                    <a class="btn btn-sm btn-secondary"
+                       href="{{ url_for('document_file', doc_id=d.id) }}" target="_blank" rel="noopener">view</a>
+                    <a class="btn btn-sm btn-secondary"
+                       href="{{ url_for('document_file', doc_id=d.id) }}?download=1">↓</a>
+                    <form method="POST" action="{{ url_for('delete_document', doc_id=d.id) }}"
+                          style="display:inline;" onsubmit="return confirm('Delete this document? The PDF file will be removed.');">
+                        <button type="submit" class="btn btn-sm btn-secondary">delete</button>
+                    </form>
+                </td>
+            </tr>
+            {% if d.summary %}
+            <tr><td></td><td colspan="4"
+                style="color:var(--text-muted);font-size:0.85em;padding-top:0;">{{ d.summary }}</td></tr>
+            {% endif %}
+            {% endfor %}
+        </tbody>
+    </table>
+    </div>
+    {% else %}
+    <div class="empty-state">
+        <p>No documents yet. Upload a clinic note, lab report, or imaging PDF.</p>
+    </div>
+    {% endif %}
+</div>
+
+<script>
+
+// ============================================================
+// Tab switching
+// ============================================================
+function switchTab(name) {
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+    document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+
+    document.querySelector(`[onclick="switchTab('${name}')"]`).classList.add('active');
+    document.getElementById(`tab-${name}`).classList.add('active');
+
+    // Update hash without scrolling
+    history.replaceState(null, '', `#${name}`);
+}
+
+// ============================================================
+// Collapsible add forms
+// ============================================================
+function toggleForm(id) {
+    const panel = document.getElementById(id);
+    panel.classList.toggle('open');
+    if (panel.classList.contains('open')) {
+        panel.querySelector('input, select, textarea')?.focus();
+    }
+}
+
+// ============================================================
+// Load tab from URL hash on page load
+// ============================================================
+window.addEventListener('DOMContentLoaded', () => {
+    const hash = window.location.hash.replace('#', '');
+    const valid = ['labs', 'ana', 'medications', 'events', 'clinicians', 'backfill'];
+    if (valid.includes(hash)) {
+        switchTab(hash);
+    }
+});
+
+//========================================================
+// Edit/Cancel/Delete
+//========================================================
+function cancelEdit(id, type) {
+    if (type === 'lab') {
+        document.getElementById(`lab-row-${id}`).style.display = 'table-row';
+        document.getElementById(`lab-edit-${id}`).style.display = 'none';
+    } else if (type === 'ana') {
+        document.getElementById(`ana-row-${id}`).style.display = 'table-row';
+        document.getElementById(`ana-edit-${id}`).style.display = 'none';
+    } else if (type === 'event') {
+        document.getElementById(`event-row-${id}`).style.display = 'table-row';
+        document.getElementById(`event-edit-${id}`).style.display = 'none';
+    } else if (type === 'clinician') {
+        document.getElementById(`clinician-row-${id}`).style.display = 'table-row';
+        document.getElementById(`clinician-edit-${id}`).style.display = 'none';
+    } else if (type === 'med') {
+        document.getElementById(`med-row-${id}`).style.display = 'table-row';
+        document.getElementById(`med-edit-${id}`).style.display = 'none';
+    } else if (type === 'med-inactive') {  
+        document.getElementById(`med-inactive-row-${id}`).style.display = 'table-row';
+        document.getElementById(`med-inactive-edit-${id}`).style.display = 'none';
+    }
+}
+
+function confirmDelete(id, type) {
+    let entityName = '';
+    let deleteUrl = '';
+    
+    if (type === 'lab') {
+        entityName = 'lab result';
+        deleteUrl = `/lab/delete/${id}`;
+    } else if (type === 'ana') {
+        entityName = 'ANA result';
+        deleteUrl = `/ana/delete/${id}`;
+    } else if (type === 'event') {
+        entityName = 'clinical event';
+        deleteUrl = `/event/delete/${id}`;
+    } else if (type === 'clinician') {
+        entityName = 'clinician';
+        deleteUrl = `/clinician/delete/${id}`;
+    } else if (type === 'med' || type === 'med-inactive') {  
+        entityName = 'medication';
+        deleteUrl = `/medication/delete/${id}`;
+    }
+    
+    const btn = document.getElementById(`delete-${type}-${id}`);
+    
+    if (btn.classList.contains('confirm-delete')) {
+        // Second click - actually delete.
+        // This form is created after page load, so base.html's auto-injector
+        // never sees it — add the CSRF token ourselves or the POST is rejected.
+        const form = document.createElement('form');
+        form.method = 'POST';
+        form.action = deleteUrl;
+        const token = document.querySelector('meta[name="csrf-token"]')?.content;
+        if (token) {
+            const inp = document.createElement('input');
+            inp.type = 'hidden';
+            inp.name = 'csrf_token';
+            inp.value = token;
+            form.appendChild(inp);
+        }
+        document.body.appendChild(form);
+        form.submit();
+    } else {
+        // First click - show warning
+        btn.textContent = `delete ${entityName}?`;
+        btn.classList.add('confirm-delete');
+        setTimeout(() => {
+            btn.textContent = 'delete';
+            btn.classList.remove('confirm-delete');
+        }, 3000);
+    }
+}
+
+    function editInactiveMedication(id) {
+    document.getElementById(`med-inactive-row-${id}`).style.display = 'none';
+    document.getElementById(`med-inactive-edit-${id}`).style.display = 'table-row';
+    }
+
+
+    function editClinician(id) {
+    document.getElementById(`clinician-row-${id}`).style.display = 'none';
+    document.getElementById(`clinician-edit-${id}`).style.display = 'table-row';
+    }
+
+
+    function editEvent(id) {
+    document.getElementById(`event-row-${id}`).style.display = 'none';
+    document.getElementById(`event-edit-${id}`).style.display = 'table-row';
+    }
+
+    function editLab(id) {
+    // Hide read row, show edit row
+    document.getElementById(`lab-row-${id}`).style.display = 'none';
+    document.getElementById(`lab-edit-${id}`).style.display = 'table-row';
+    }
+
+    function editAna(id) {
+    document.getElementById(`ana-row-${id}`).style.display = 'none';
+    document.getElementById(`ana-edit-${id}`).style.display = 'table-row';
+    }
+
+    function editMedication(id) {
+    document.getElementById('med-row-' + id).style.display = 'none';
+    document.getElementById('med-edit-' + id).style.display = 'table-row';
+    }
+
+    // -------------------------------------------------------
+    // Taper wizard
+    // -------------------------------------------------------
+
+    // Default Medrol dose pack: [offset_days, time_HH:MM, label_prefix, tablet_count]
+    const MEDROL_DEFAULTS = [
+        [0, "08:00", "Day 1 – Morning",  2],
+        [0, "12:00", "Day 1 – Midday",   1],
+        [0, "18:00", "Day 1 – Evening",  1],
+        [0, "21:00", "Day 1 – Bedtime",  2],
+        [1, "08:00", "Day 2 – Morning",  2],
+        [1, "12:00", "Day 2 – Midday",   1],
+        [1, "18:00", "Day 2 – Evening",  1],
+        [1, "21:00", "Day 2 – Bedtime",  1],
+        [2, "08:00", "Day 3 – Morning",  1],
+        [2, "12:00", "Day 3 – Midday",   1],
+        [2, "18:00", "Day 3 – Evening",  1],
+        [2, "21:00", "Day 3 – Bedtime",  1],
+        [3, "08:00", "Day 4 – Morning",  1],
+        [3, "12:00", "Day 4 – Midday",   1],
+        [3, "21:00", "Day 4 – Bedtime",  1],
+        [4, "08:00", "Day 5 – Morning",  1],
+        [4, "21:00", "Day 5 – Bedtime",  1],
+        [5, "08:00", "Day 6 – Morning",  1],
+    ];
+
+    function addDaysToDate(dateStr, n) {
+        const d = new Date(dateStr + "T12:00:00");
+        d.setDate(d.getDate() + n);
+        return d.toISOString().slice(0, 10);
+    }
+
+    function toggleTaperWizard(medId) {
+        const row = document.getElementById('taper-wizard-' + medId);
+        if (row.style.display === 'none') {
+            row.style.display = 'table-row';
+            rebuildTaperRows(medId);
+        } else {
+            row.style.display = 'none';
+        }
+    }
+
+    function rebuildTaperRows(medId) {
+        const startDateEl = document.getElementById('taper-start-' + medId);
+        const startDate = startDateEl ? startDateEl.value : '{{ today }}';
+        const container = document.getElementById('taper-days-' + medId);
+        if (!container) return;
+
+        let html = '';
+        let lastOffset = -1;
+        MEDROL_DEFAULTS.forEach(function(d, i) {
+            const [offset, time, labelPrefix, amount] = d;
+            const absDate = addDaysToDate(startDate, offset);
+            // datetime-local input value format: YYYY-MM-DDTHH:MM
+            const datetimeLocal = absDate + 'T' + time;
+            const fullLabel = labelPrefix + ' (' + amount + ' tablet' + (amount > 1 ? 's' : '') + ')';
+
+            if (offset !== lastOffset) {
+                if (lastOffset !== -1) html += '</div>';
+                html += '<div style="background:var(--bg-card); border:1px solid var(--border-subtle); border-radius:var(--radius-sm); padding:var(--space-sm);">';
+                html += '<div style="font-size:0.8rem; color:var(--text-muted); margin-bottom:6px; font-weight:600;">Day ' + (offset + 1) + ' &mdash; ' + absDate + '</div>';
+                lastOffset = offset;
+            }
+
+            html += '<div style="display:flex; gap:var(--space-sm); align-items:center; margin-bottom:4px; flex-wrap:wrap;">';
+            // datetime-local submits as dose_time_N in YYYY-MM-DDTHH:MM format
+            html += '<input type="datetime-local" name="dose_time_' + i + '" value="' + datetimeLocal + '" '
+                  + 'style="padding:2px 6px; font-size:0.85rem;">';
+            html += '<input type="number" name="dose_amount_' + i + '" value="' + amount + '" min="0.5" step="0.5" '
+                  + 'style="width:64px; padding:2px 6px; font-size:0.85rem;" title="tablets">';
+            html += '<span style="font-size:0.8rem; color:var(--text-muted);">tab</span>';
+            html += '<input type="text" name="dose_label_' + i + '" value="' + fullLabel + '" '
+                  + 'style="flex:1; min-width:160px; padding:2px 6px; font-size:0.85rem;" placeholder="label">';
+            html += '</div>';
+        });
+        if (lastOffset !== -1) html += '</div>';
+        container.innerHTML = html;
+    }
+
+//==================================
+// Exports
+//==================================
+
+// Export labs to CSV
+function exportLabs() {
+    const start = document.getElementById('export-labs-start').value;
+    const end = document.getElementById('export-labs-end').value;
+    
+    if (!start || !end) {
+        alert('Please select both start and end dates');
+        return;
+    }
+    
+    // Build URL with query parameters
+    const url = `/export/labs?start=${start}&end=${end}`;
+    
+    // Trigger download
+    window.location.href = url;
+}
+
+// Set default date range to last 6 months
+window.addEventListener('DOMContentLoaded', () => {
+    const today = new Date();
+    const sixMonthsAgo = new Date();
+    sixMonthsAgo.setMonth(today.getMonth() - 6);
+    
+    document.getElementById('export-labs-end').value = today.toISOString().split('T')[0];
+    document.getElementById('export-labs-start').value = sixMonthsAgo.toISOString().split('T')[0];
+});
+
+// Export medications to CSV
+function exportMedications() {
+    const filter = document.getElementById('export-meds-filter').value;
+    
+    // Build URL with filter parameter
+    const url = `/export/medications?filter=${filter}`;
+    
+    // Trigger download
+    window.location.href = url;
+}
+
+// Export events to CSV
+function exportEvents() {
+    const start = document.getElementById('export-events-start').value;
+    const end = document.getElementById('export-events-end').value;
+    const eventType = document.getElementById('export-events-type').value;
+    
+    if (!start || !end) {
+        alert('Please select both start and end dates');
+        return;
+    }
+    
+    // Build URL with query parameters
+    const url = `/export/events?start=${start}&end=${end}&type=${eventType}`;
+    
+    // Trigger download
+    window.location.href = url;
+}
+
+// Set default date range to last year for events
+window.addEventListener('DOMContentLoaded', () => {
+    const today = new Date();
+    const oneYearAgo = new Date();
+    oneYearAgo.setFullYear(today.getFullYear() - 1);
+    
+    // Only set if elements exist (events tab)
+    const eventsEndInput = document.getElementById('export-events-end');
+    const eventsStartInput = document.getElementById('export-events-start');
+    
+    if (eventsEndInput && eventsStartInput) {
+        eventsEndInput.value = today.toISOString().split('T')[0];
+        eventsStartInput.value = oneYearAgo.toISOString().split('T')[0];
+    }
+});
+
+</script>
+<style>
+.tab-nav {
+    display: flex;
+    gap: 2px;
+    margin-bottom: var(--space-lg);
+    border-bottom: 1px solid var(--border-subtle);
+    padding-bottom: 0;
+}
+
+.tab-btn {
+    background: transparent;
+    border: none;
+    border-bottom: 2px solid transparent;
+    color: var(--text-muted);
+    cursor: pointer;
+    font-family: var(--font-body);
+    font-size: 0.9rem;
+    padding: var(--space-sm) var(--space-md);
+    margin-bottom: -1px;
+    transition: color 0.15s, border-color 0.15s;
+    display: flex;
+    align-items: center;
+    gap: var(--space-xs);
+}
+
+.tab-btn:hover { color: var(--text-secondary); }
+
+.tab-btn.active {
+    color: var(--text-primary);
+    border-bottom-color: var(--color-accent);
+}
+
+.tab-count {
+    font-family: var(--font-mono);
+    font-size: 0.7rem;
+    background: var(--bg-elevated);
+    color: var(--text-muted);
+    padding: 1px 5px;
+    border-radius: 10px;
+}
+
+.tab-panel { display: none; }
+.tab-panel.active { display: block; }
+
+.add-toggle-row {
+    margin-bottom: var(--space-md);
+}
+
+.add-form-panel {
+    display: none;
+    background: var(--bg-elevated);
+    border: 1px solid var(--border-medium);
+    border-radius: var(--radius-md);
+    padding: var(--space-lg);
+    margin-bottom: var(--space-lg);
+    animation: slideDown 0.15s ease;
+}
+
+.add-form-panel.open { display: block; }
+
+.form-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: var(--space-md);
+    margin-bottom: var(--space-md);
+}
+
+@media (max-width: 600px) {
+    .tab-btn { font-size: 0.8rem; padding: var(--space-xs) var(--space-sm); }
+    .form-grid { grid-template-columns: 1fr; }
+</style>
+
+{% endblock %}
+
