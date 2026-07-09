@@ -1,5 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- App accent — the background layer behind the sardine tin in the adaptive icon. -->
-    <color name="ic_launcher_background">#7A8DE0</color>
+    <!-- Background layer of the adaptive icon: the site's dark chart ground.
+         The foreground layer is the "spike" mark — the score-attribution chart
+         reduced to three stacked-bar days crossing the flare threshold. -->
+    <color name="ic_launcher_background">#1E1E28</color>
 </resources>
