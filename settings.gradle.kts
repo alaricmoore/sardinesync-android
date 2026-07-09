@@ -14,3 +14,4 @@ dependencyResolutionManagement {
 }
 rootProject.name = "sardinessync-android"
 include(":app")
+include(":applocal")

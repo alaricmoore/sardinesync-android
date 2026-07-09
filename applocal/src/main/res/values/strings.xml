@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Working title — the naming (SardineTracker vs SardineSync Local vs …)
+         is Alaric's call before anything ships. -->
+    <string name="app_name">SardineTracker</string>
+</resources>
