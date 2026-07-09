@@ -10,6 +10,12 @@
         android:id="@+id/menu_backfill"
         android:title="Import Health Connect history" />
     <item
+        android:id="@+id/menu_export"
+        android:title="Export backup" />
+    <item
+        android:id="@+id/menu_import"
+        android:title="Restore backup" />
+    <item
         android:id="@+id/menu_reload"
         android:title="Reload page" />
 </menu>

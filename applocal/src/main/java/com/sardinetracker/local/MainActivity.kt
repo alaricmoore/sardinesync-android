@@ -46,6 +46,19 @@ class MainActivity : ComponentActivity() {
     private val notifPermLauncher =
         registerForActivityResult(androidx.activity.result.contract.ActivityResultContracts.RequestPermission()) { }
 
+    // Export: the system "save as" dialog picks where the backup zip lands
+    // (Downloads, Drive, a USB stick — the user's call, not ours).
+    private val exportLauncher =
+        registerForActivityResult(androidx.activity.result.contract.ActivityResultContracts.CreateDocument("application/zip")) { uri ->
+            if (uri != null) writeBackupTo(uri)
+        }
+
+    // Import: system file picker; confirmation happens before any bytes move.
+    private val importLauncher =
+        registerForActivityResult(androidx.activity.result.contract.ActivityResultContracts.OpenDocument()) { uri ->
+            if (uri != null) confirmAndRestore(uri)
+        }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
@@ -118,6 +131,11 @@ class MainActivity : ComponentActivity() {
                 return true
             }
         }
+
+        // The site's own "export all data" link is a file download, which a
+        // WebView silently ignores without this. Any download the embedded
+        // site offers IS the backup zip, so route it through the SAF flow.
+        webView.setDownloadListener { _, _, _, _, _ -> exportBackup() }
     }
 
     private fun showMenu(anchor: android.view.View) {
@@ -128,6 +146,8 @@ class MainActivity : ComponentActivity() {
                     R.id.menu_permissions -> requestPermissions()
                     R.id.menu_sync -> readAndSync()
                     R.id.menu_backfill -> backfill()
+                    R.id.menu_export -> exportBackup()
+                    R.id.menu_import -> importLauncher.launch(arrayOf("application/zip"))
                     R.id.menu_reload -> webView.reload()
                 }
                 true
@@ -217,6 +237,94 @@ class MainActivity : ComponentActivity() {
 
     private fun markBackfillDone() {
         prefs.edit().putBoolean(KEY_BACKFILL_DONE, true).apply()
+    }
+
+    // ---- backup / restore -------------------------------------------------
+
+    private fun exportBackup() {
+        val date = java.time.LocalDate.now().toString()
+        exportLauncher.launch("sardinetracker_backup_$date.zip")
+    }
+
+    /** Stream /api/backup/export into the user-chosen document. */
+    private fun writeBackupTo(uri: android.net.Uri) {
+        val target = EmbeddedServer.syncTarget(this) ?: return toast("Server not ready yet.")
+        toast("Exporting backup…")
+        lifecycleScope.launch {
+            try {
+                val bytes = withContext(Dispatchers.IO) {
+                    val conn = java.net.URL("${EmbeddedServer.BASE}/api/backup/export")
+                        .openConnection() as java.net.HttpURLConnection
+                    conn.setRequestProperty("Authorization", "Bearer ${target.token}")
+                    conn.connectTimeout = 15_000
+                    conn.readTimeout = 60_000
+                    if (conn.responseCode != 200) throw RuntimeException("HTTP ${conn.responseCode}")
+                    var total = 0L
+                    conn.inputStream.use { input ->
+                        contentResolver.openOutputStream(uri)!!.use { output ->
+                            val buf = ByteArray(64 * 1024)
+                            while (true) {
+                                val n = input.read(buf)
+                                if (n < 0) break
+                                output.write(buf, 0, n)
+                                total += n
+                            }
+                        }
+                    }
+                    total
+                }
+                toast("Backup saved (${bytes / 1024} KB). Keep a copy somewhere safe.")
+            } catch (e: Exception) {
+                toast("Export failed: ${e.message}")
+            }
+        }
+    }
+
+    /** Restore is destructive — make the user say so out loud first. */
+    private fun confirmAndRestore(uri: android.net.Uri) {
+        android.app.AlertDialog.Builder(this)
+            .setTitle("Restore backup?")
+            .setMessage(
+                "This replaces ALL data in this app — every entry, medication, " +
+                "lab, and document — with the contents of the backup file. " +
+                "This cannot be undone."
+            )
+            .setPositiveButton("Replace everything") { _, _ -> restoreFrom(uri) }
+            .setNegativeButton("Cancel", null)
+            .show()
+    }
+
+    private fun restoreFrom(uri: android.net.Uri) {
+        val target = EmbeddedServer.syncTarget(this) ?: return toast("Server not ready yet.")
+        toast("Restoring backup…")
+        lifecycleScope.launch {
+            try {
+                val response = withContext(Dispatchers.IO) {
+                    val payload = contentResolver.openInputStream(uri)!!.use { it.readBytes() }
+                    val conn = java.net.URL("${EmbeddedServer.BASE}/api/backup/restore")
+                        .openConnection() as java.net.HttpURLConnection
+                    conn.requestMethod = "POST"
+                    conn.setRequestProperty("Authorization", "Bearer ${target.token}")
+                    conn.setRequestProperty("Content-Type", "application/zip")
+                    conn.doOutput = true
+                    conn.connectTimeout = 15_000
+                    conn.readTimeout = 120_000
+                    conn.outputStream.use { it.write(payload) }
+                    val ok = conn.responseCode == 200
+                    val body = (if (ok) conn.inputStream else conn.errorStream)
+                        ?.bufferedReader()?.readText() ?: ""
+                    Pair(ok, body)
+                }
+                if (response.first) {
+                    toast("Backup restored.")
+                    webView.reload()
+                } else {
+                    toast("Restore failed: ${response.second.take(120)}")
+                }
+            } catch (e: Exception) {
+                toast("Restore failed: ${e.message}")
+            }
+        }
     }
 
     private fun toast(msg: String) = Toast.makeText(this, msg, Toast.LENGTH_LONG).show()
